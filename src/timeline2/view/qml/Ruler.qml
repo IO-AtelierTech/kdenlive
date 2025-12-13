@@ -65,36 +65,38 @@ Item {
 
     // Timeline preview stuff
     Repeater {
-        model: timeline.dirtyChunks
+        model: timeline ? timeline.dirtyChunks : []
         anchors.fill: parent
         delegate: Rectangle {
-            x: modelData * timeline.scaleFactor
+            property real scaleFactor: timeline ? timeline.scaleFactor : 1.0
+            x: modelData * scaleFactor
             anchors.bottom: parent.bottom
             anchors.bottomMargin: zoneHeight
-            width: 25 * timeline.scaleFactor
+            width: 25 * scaleFactor
             height: previewHeight
             color: 'darkred'
         }
     }
 
     Repeater {
-        model: timeline.renderedChunks
+        model: timeline ? timeline.renderedChunks : []
         anchors.fill: parent
         delegate: Rectangle {
-            x: modelData * timeline.scaleFactor
+            property real scaleFactor: timeline ? timeline.scaleFactor : 1.0
+            x: modelData * scaleFactor
             anchors.bottom: parent.bottom
             anchors.bottomMargin: zoneHeight
-            width: 25 * timeline.scaleFactor
+            width: 25 * scaleFactor
             height: previewHeight
             color: 'darkgreen'
         }
     }
     Rectangle {
         id: working
-        x: rulerRoot.workingPreview * timeline.scaleFactor
+        x: timeline ? rulerRoot.workingPreview * timeline.scaleFactor : 0
         anchors.bottom: parent.bottom
         anchors.bottomMargin: zoneHeight
-        width: 25 * timeline.scaleFactor
+        width: timeline ? 25 * timeline.scaleFactor : 25
         height: previewHeight
         color: 'orange'
         visible: rulerRoot.workingPreview > -1
@@ -611,12 +613,12 @@ Item {
         Binding {
             target: zone
             property: "frameIn"
-            value: timeline.zoneIn
+            value: timeline ? timeline.zoneIn : 0
         }
         Binding {
             target: zone
             property: "frameOut"
-            value: timeline.zoneOut
+            value: timeline ? timeline.zoneOut : 0
         }
         color: useTimelineRuler ? Qt.rgba(activePalette.highlight.r,activePalette.highlight.g,activePalette.highlight.b,0.9) :
         Qt.rgba(activePalette.highlight.r,activePalette.highlight.g,activePalette.highlight.b,0.5)
@@ -632,9 +634,10 @@ Item {
     Repeater {
         model: effectZones
         Rectangle {
-            x: effectZones[index].x * timeline.scaleFactor
+            property real scaleFactor: timeline ? timeline.scaleFactor : 1.0
+            x: effectZones[index].x * scaleFactor
             height: zoneHeight - 1
-            width: (effectZones[index].y - effectZones[index].x) * timeline.scaleFactor
+            width: (effectZones[index].y - effectZones[index].x) * scaleFactor
             color: "blueviolet"
             anchors.bottom: parent.bottom
             opacity: 0.4
@@ -647,12 +650,12 @@ Item {
         Binding {
             target: effectZone
             property: "frameIn"
-            value: timeline.effectZone.x
+            value: timeline ? timeline.effectZone.x : 0
         }
         Binding {
             target: effectZone
             property: "frameOut"
-            value: timeline.effectZone.y
+            value: timeline ? timeline.effectZone.y : 0
         }
         color: "orchid"
         anchors.bottom: parent.bottom

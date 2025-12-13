@@ -1535,7 +1535,7 @@ function getTrackColor(audio, header) {
                     width: root.width - root.headerWidth
                     height: Math.round(root.baseUnit * 2.5) + ruler.guideLabelHeight
                     contentX: scrollView.contentX
-                    contentWidth: Math.max(parent.width, timeline.fullDuration * timeScale)
+                    contentWidth: Math.max(parent.width, (timeline ? timeline.fullDuration : 0) * timeScale)
                     interactive: false
                     clip: true
                     onWidthChanged: {
@@ -1600,7 +1600,7 @@ function getTrackColor(audio, header) {
                                 border.width: 1
                                 border.color: root.frameColor
                                 height: subtitleTrack.height / (maxSubLayer + 1)
-                                color: (controller && controller.isSubtitleTrack(timeline.activeTrack) && (timeline.activeSubLayer == index)) ? Qt.tint(getTrackColor(false, false), selectedTrackColor) : getTrackColor(false, false)
+                                color: (controller && timeline && controller.isSubtitleTrack(timeline.activeTrack) && (timeline.activeSubLayer == index)) ? Qt.tint(getTrackColor(false, false), selectedTrackColor) : getTrackColor(false, false)
                             }
                         }
                     }
@@ -1677,7 +1677,7 @@ function getTrackColor(audio, header) {
                         }
                         Item {
                             id: tracksContainerArea
-                            width: Math.max(scrollView.width - vertScroll.width, timeline.fullDuration * timeScale)
+                            width: Math.max(scrollView.width - vertScroll.width, (timeline ? timeline.fullDuration : 0) * timeScale)
                             height: trackHeaders.height + subtitleTrackHeader.height
                             y: subtitleTrack.height
                             //Math.max(trackHeaders.height, scrollView.contentHeight - scrollView.__horizontalScrollBar.height)
@@ -2025,7 +2025,7 @@ function getTrackColor(audio, header) {
                         }
                         height: Math.round(root.baseUnit * 0.7)
                         barMinWidth: root.baseUnit
-                        fitsZoom: timeline.scaleFactor === root.fitZoom() && root.scrollPos() === 0
+                        fitsZoom: timeline && timeline.scaleFactor === root.fitZoom() && root.scrollPos() === 0
                         zoomFactor: scrollView.visibleArea.widthRatio
                         onProposeZoomFactor: (proposedValue) => {
                             timeline.scaleFactor = scrollView.width / Math.round(proposedValue * scrollView.contentWidth / root.timeScale)
@@ -2069,12 +2069,12 @@ function getTrackColor(audio, header) {
             }
             Rectangle {
                 id: multicamLine
-                visible: root.activeTool === K.ToolType.MulticamTool && timeline.multicamIn > -1
+                visible: root.activeTool === K.ToolType.MulticamTool && timeline && timeline.multicamIn > -1
                 color: 'purple'
                 width: 3
                 opacity: 1
                 height: tracksContainerArea.height
-                x: timeline.multicamIn * root.timeScale - scrollView.contentX
+                x: (timeline ? timeline.multicamIn : 0) * root.timeScale - scrollView.contentX
                 y: ruler.height
                 Rectangle {
                     // multicam in label
@@ -2205,7 +2205,7 @@ function getTrackColor(audio, header) {
     }
 
     Connections {
-        target: timeline
+        target: timeline ?? null
         function onFrameFormatChanged() {
             ruler.adjustFormat()
         }
