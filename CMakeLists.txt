@@ -141,6 +141,7 @@ find_package(Qt${QT_MAJOR_VERSION}
     MultimediaWidgets
     NetworkAuth
     SvgWidgets
+    WebSockets
     Xml
     # Test
 )
