@@ -7,6 +7,7 @@
 
 #include "rpctypes.h"
 
+#include <QMutex>
 #include <QObject>
 #include <QSet>
 #include <QString>
@@ -107,6 +108,7 @@ Q_SIGNALS:
 private:
     void sendNotification(const QString &method, const QJsonObject &params);
 
+    mutable QMutex m_mutex;
     QWebSocket *m_client{nullptr};
     QSet<QString> m_subscriptions;
 };

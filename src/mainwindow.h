@@ -161,6 +161,9 @@ public:
     /** @brief Raise (show) the clip or project monitor */
     void raiseMonitor(bool clipMonitor);
 
+    /** @brief Returns a pointer to the render widget */
+    RenderWidget *renderWidget() const { return m_renderWidget; }
+
     /** @brief Raise (show) the project bin
      * @param unconditionally if false, we won't raise the bin if docked with the project monitor */
     void raiseBin(bool unconditionally = true);

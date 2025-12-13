@@ -15,6 +15,8 @@
 #include "render/renderrequest.h"
 #include "renderpresets/renderpresetmodel.hpp"
 #include "renderpresets/renderpresetrepository.hpp"
+#include "timeline2/model/timelineitemmodel.hpp"
+#include "timeline2/model/timelinemodel.hpp"
 
 #include <QDir>
 #include <QFileInfo>
@@ -256,7 +258,7 @@ QJsonObject RenderHandler::handleStartWithGuides(const QJsonObject &params)
     request.loadPresetParams(presetName);
 
     // Enable multi-export with guides
-    std::weak_ptr<MarkerListModel> guidesModel = timeline->getMarkerModel();
+    std::weak_ptr<MarkerListModel> guidesModel = timeline->getGuideModel();
     request.setGuideParams(guidesModel, true, guideCategory);
 
     auto jobs = request.process();

@@ -20,6 +20,7 @@
 #include "timeline2/view/timelinewidget.h"
 
 #include <QJsonArray>
+#include <unordered_set>
 
 TimelineHandler::TimelineHandler(RpcNotifier *notifier, QObject *parent)
     : QObject(parent)
@@ -216,27 +217,21 @@ QJsonObject TimelineHandler::handleGetClips(const QJsonObject &params)
             continue;
         }
 
-        // Get clips in this track
-        int clipsCount = model->getTrackClipsCount(trackId);
-        if (clipsCount == 0) {
-            continue;
-        }
-
-        // Iterate through all clips in the model
-        for (auto it = model->m_allClips.begin(); it != model->m_allClips.end(); ++it) {
-            int clipId = it->first;
-            if (model->getClipTrackId(clipId) != trackId) {
+        // Get all items in this track and filter for clips
+        std::unordered_set<int> trackItems = model->getItemsInRange(trackId, 0, -1, false);
+        for (int itemId : trackItems) {
+            if (!model->isClip(itemId)) {
                 continue;
             }
 
             QJsonObject clipInfo;
-            clipInfo[QStringLiteral("id")] = clipId;
-            clipInfo[QStringLiteral("binId")] = model->getClipBinId(clipId);
+            clipInfo[QStringLiteral("id")] = itemId;
+            clipInfo[QStringLiteral("binId")] = model->getClipBinId(itemId);
             clipInfo[QStringLiteral("trackId")] = trackId;
-            clipInfo[QStringLiteral("position")] = model->getClipPosition(clipId);
-            clipInfo[QStringLiteral("duration")] = model->getClipPlaytime(clipId);
+            clipInfo[QStringLiteral("position")] = model->getClipPosition(itemId);
+            clipInfo[QStringLiteral("duration")] = model->getClipPlaytime(itemId);
 
-            auto inOut = model->getClipInOut(clipId);
+            auto inOut = model->getClipInOut(itemId);
             clipInfo[QStringLiteral("in")] = inOut.first;
             clipInfo[QStringLiteral("out")] = inOut.second;
 

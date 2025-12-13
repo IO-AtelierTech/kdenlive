@@ -6,6 +6,7 @@
 #include "rpcnotifier.h"
 
 #include <QJsonDocument>
+#include <QMutexLocker>
 
 RpcNotifier::RpcNotifier(QObject *parent)
     : QObject(parent)
@@ -16,14 +17,16 @@ RpcNotifier::~RpcNotifier() = default;
 
 void RpcNotifier::setClient(QWebSocket *client)
 {
+    QMutexLocker locker(&m_mutex);
     m_client = client;
     if (!client) {
-        clearSubscriptions();
+        m_subscriptions.clear();
     }
 }
 
 bool RpcNotifier::subscribe(const QString &eventType)
 {
+    QMutexLocker locker(&m_mutex);
     if (m_subscriptions.contains(eventType)) {
         return false;
     }
@@ -33,21 +36,25 @@ bool RpcNotifier::subscribe(const QString &eventType)
 
 bool RpcNotifier::unsubscribe(const QString &eventType)
 {
+    QMutexLocker locker(&m_mutex);
     return m_subscriptions.remove(eventType);
 }
 
 bool RpcNotifier::isSubscribed(const QString &eventType) const
 {
+    QMutexLocker locker(&m_mutex);
     return m_subscriptions.contains(eventType);
 }
 
 QSet<QString> RpcNotifier::subscriptions() const
 {
+    QMutexLocker locker(&m_mutex);
     return m_subscriptions;
 }
 
 void RpcNotifier::clearSubscriptions()
 {
+    QMutexLocker locker(&m_mutex);
     m_subscriptions.clear();
 }
 
@@ -60,6 +67,7 @@ QStringList RpcNotifier::availableEventTypes()
 
 void RpcNotifier::notify(const QString &eventType, const QJsonObject &data)
 {
+    QMutexLocker locker(&m_mutex);
     if (!m_client || !m_client->isValid()) {
         return;
     }
@@ -68,18 +76,30 @@ void RpcNotifier::notify(const QString &eventType, const QJsonObject &data)
         return;
     }
 
-    sendNotification(eventType, data);
+    // Unlock before sending to avoid holding lock during I/O
+    QWebSocket *client = m_client;
+    locker.unlock();
+
+    QJsonObject notification = makeNotification(eventType, data);
+    QString json = QString::fromUtf8(QJsonDocument(notification).toJson(QJsonDocument::Compact));
+    client->sendTextMessage(json);
+    Q_EMIT notificationSent(eventType);
 }
 
 void RpcNotifier::sendNotification(const QString &method, const QJsonObject &params)
 {
+    QMutexLocker locker(&m_mutex);
     if (!m_client || !m_client->isValid()) {
         return;
     }
 
+    // Unlock before sending to avoid holding lock during I/O
+    QWebSocket *client = m_client;
+    locker.unlock();
+
     QJsonObject notification = makeNotification(method, params);
     QString json = QString::fromUtf8(QJsonDocument(notification).toJson(QJsonDocument::Compact));
-    m_client->sendTextMessage(json);
+    client->sendTextMessage(json);
     Q_EMIT notificationSent(method);
 }
 

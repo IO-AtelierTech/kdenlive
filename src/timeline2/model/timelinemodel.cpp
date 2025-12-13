@@ -7071,6 +7071,49 @@ std::unordered_set<int> TimelineModel::getAllTracksIds() const
     return result;
 }
 
+std::vector<int> TimelineModel::getTrackClipIds(int trackId) const
+{
+    READ_LOCK();
+    std::vector<int> result;
+    for (const auto &clip : m_allClips) {
+        if (getClipTrackId(clip.first) == trackId) {
+            result.push_back(clip.first);
+        }
+    }
+    return result;
+}
+
+std::vector<int> TimelineModel::getAllCompositionIds() const
+{
+    READ_LOCK();
+    std::vector<int> result;
+    result.reserve(m_allCompositions.size());
+    for (const auto &comp : m_allCompositions) {
+        result.push_back(comp.first);
+    }
+    return result;
+}
+
+int TimelineModel::getCompositionATrack(int compositionId) const
+{
+    READ_LOCK();
+    auto it = m_allCompositions.find(compositionId);
+    if (it != m_allCompositions.end()) {
+        return it->second->getATrack();
+    }
+    return -1;
+}
+
+QString TimelineModel::getCompositionName(int compositionId) const
+{
+    READ_LOCK();
+    auto it = m_allCompositions.find(compositionId);
+    if (it != m_allCompositions.end()) {
+        return it->second->displayName();
+    }
+    return QString();
+}
+
 void TimelineModel::switchComposition(int cid, const QString &compoId)
 {
     Fun undo = []() { return true; };
