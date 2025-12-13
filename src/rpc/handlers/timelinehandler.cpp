@@ -14,6 +14,7 @@
 #include "monitor/monitor.h"
 #include "monitor/monitormanager.h"
 #include "project/projectmanager.h"
+#include "timeline2/model/timelinefunctions.hpp"
 #include "timeline2/model/timelineitemmodel.hpp"
 #include "timeline2/model/timelinemodel.hpp"
 #include "timeline2/view/timelinecontroller.h"
@@ -906,9 +907,44 @@ auto TimelineHandler::handleSetTrackProperty(const QJsonObject &params) -> QJson
 
     if (property == QLatin1String("locked")) {
         model->setTrackLockedState(trackId, value.toBool());
-    } else if (property == QLatin1String("muted") || property == QLatin1String("disabled")) {
-        // Use hide track for muting
-        controller->hideTrack(trackId, value.toBool());
+    } else if (property == QLatin1String("muted")) {
+        // The "hide" property is a bitmask: bit 1 = hidden, bit 2 = muted
+        // Value 3 means enabled (visible and unmuted)
+        int currentHide = model->getTrackProperty(trackId, QStringLiteral("hide")).toInt();
+        if (currentHide == 3) {
+            currentHide = 0; // Convert "enabled" to 0 for bitmask operations
+        }
+
+        if (value.toBool()) {
+            currentHide |= 2; // Set mute bit
+        } else {
+            currentHide &= ~2; // Clear mute bit
+        }
+
+        // If both bits clear, use 3 for "enabled"
+        if (currentHide == 0) {
+            currentHide = 3;
+        }
+
+        model->setTrackProperty(trackId, QStringLiteral("hide"), QString::number(currentHide));
+    } else if (property == QLatin1String("hidden")) {
+        // The "hide" property is a bitmask: bit 1 = hidden, bit 2 = muted
+        int currentHide = model->getTrackProperty(trackId, QStringLiteral("hide")).toInt();
+        if (currentHide == 3) {
+            currentHide = 0;
+        }
+
+        if (value.toBool()) {
+            currentHide |= 1; // Set hidden bit
+        } else {
+            currentHide &= ~1; // Clear hidden bit
+        }
+
+        if (currentHide == 0) {
+            currentHide = 3;
+        }
+
+        model->setTrackProperty(trackId, QStringLiteral("hide"), QString::number(currentHide));
     } else {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
                                                                  {QStringLiteral("message"), QStringLiteral("Unknown property: %1").arg(property)}}}};
