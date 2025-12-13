@@ -274,10 +274,11 @@ QDomDocument ClipCreator::getXmlFromUrl(const QString &path)
         }
         // extract embedded images
         QDomNodeList items = txtdoc.elementsByTagName(QStringLiteral("content"));
+        auto *doc = pCore->currentDoc();
         for (int j = 0; j < items.count(); ++j) {
             QDomElement content = items.item(j).toElement();
-            if (content.hasAttribute(QStringLiteral("base64"))) {
-                QString titlesFolder = pCore->currentDoc()->projectDataFolder() + QStringLiteral("/titles/");
+            if (doc && content.hasAttribute(QStringLiteral("base64"))) {
+                QString titlesFolder = doc->projectDataFolder() + QStringLiteral("/titles/");
                 QString imgPath = TitleDocument::extractBase64Image(titlesFolder, content.attribute(QStringLiteral("base64")));
                 if (!imgPath.isEmpty()) {
                     content.setAttribute(QStringLiteral("url"), imgPath);
@@ -404,9 +405,13 @@ const QString ClipCreator::createClipsFromList(const QList<QUrl> &list, bool che
     }
 
     qDebug() << "/////////// creatclipsfromlist" << cleanList << checkRemovable << parentFolder;
+    auto *currentDoc = pCore->currentDoc();
+    if (!currentDoc) {
+        return QString();
+    }
     QMimeDatabase db;
     QList<QDir> checkedDirectories;
-    bool removableProject = checkRemovable ? isOnRemovableDevice(pCore->currentDoc()->projectDataFolder()) : false;
+    bool removableProject = checkRemovable ? isOnRemovableDevice(currentDoc->projectDataFolder()) : false;
     int urlsCount = cleanList.count();
     bool stopProcess = false;
     QObject progressOwner;
