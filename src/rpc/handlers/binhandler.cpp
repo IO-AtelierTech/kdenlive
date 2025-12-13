@@ -12,8 +12,10 @@
 #include "bin/projectfolder.h"
 #include "bin/projectitemmodel.h"
 #include "core.h"
+#include "definitions.h"
 #include "doc/docundostack.hpp"
 #include "doc/kdenlivedoc.h"
+#include "jobs/taskmanager.h"
 #include "project/projectmanager.h"
 #include "undohelper.hpp"
 
@@ -389,14 +391,12 @@ auto BinHandler::handleDeleteClip(const QJsonObject &params) -> QJsonObject
     Fun undo = []() { return true; };
     Fun redo = []() { return true; };
 
-    bool success = model->requestBinClipDeletion(clip, undo, redo);
-
-    if (!success) {
+    if (!model->requestBinClipDeletion(clip, undo, redo)) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
                                                                  {QStringLiteral("message"), QStringLiteral("Failed to delete clip")}}}};
     }
 
-    pCore->projectManager()->undoStack()->push(new FunctionalUndoCommand(undo, redo, QStringLiteral("Delete bin clip")));
+    pCore->pushUndo(undo, redo, i18n("Delete bin clip"));
 
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("deleted"), true}}}};
 }
@@ -424,35 +424,35 @@ auto BinHandler::handleDeleteClips(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Missing 'clipIds' parameter")}}}};
     }
 
-    Fun undo = []() { return true; };
-    Fun redo = []() { return true; };
-
-    QJsonArray deleted;
-    QJsonArray failed;
-
+    // Collect valid clips
+    QList<std::shared_ptr<AbstractProjectItem>> clipsToDelete;
     for (const QJsonValue &val : clipIds) {
         QString clipId = val.toString();
         auto clip = model->getClipByBinID(clipId);
-        if (!clip) {
-            failed.append(clipId);
-            continue;
-        }
-
-        bool success = model->requestBinClipDeletion(clip, undo, redo);
-        if (success) {
-            deleted.append(clipId);
-        } else {
-            failed.append(clipId);
+        if (clip) {
+            clipsToDelete.append(clip);
         }
     }
 
-    if (!deleted.isEmpty()) {
-        pCore->projectManager()->undoStack()->push(new FunctionalUndoCommand(undo, redo, QStringLiteral("Delete bin clips")));
+    if (clipsToDelete.isEmpty()) {
+        return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("count"), 0}}}};
     }
 
-    // Return count as expected by API, plus detailed arrays for debugging
-    return QJsonObject{{QStringLiteral("result"),
-                        QJsonObject{{QStringLiteral("count"), deleted.size()}, {QStringLiteral("deleted"), deleted}, {QStringLiteral("failed"), failed}}}};
+    Fun undo = []() { return true; };
+    Fun redo = []() { return true; };
+    int deletedCount = 0;
+
+    for (const auto &clip : clipsToDelete) {
+        if (model->requestBinClipDeletion(clip, undo, redo)) {
+            deletedCount++;
+        }
+    }
+
+    if (deletedCount > 0) {
+        pCore->pushUndo(undo, redo, i18n("Delete bin clips"));
+    }
+
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("count"), deletedCount}}}};
 }
 
 auto BinHandler::handleCreateFolder(const QJsonObject &params) -> QJsonObject

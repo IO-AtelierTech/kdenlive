@@ -2416,6 +2416,17 @@ bool ProjectClip::selfSoftDelete(Fun &undo, Fun &redo)
         // Free audio thumb data and timeline producers
         pCore->taskManager.discardJobs(ObjectId(KdenliveObjectType::BinClip, m_binId.toInt(), QUuid()));
         m_disabledProducer.reset();
+        // Remove services from effect stack before clearing producer maps
+        // This releases shared_ptr references so m_masterProducer can be properly destroyed
+        for (auto &p : m_audioProducers) {
+            m_effectStack->removeService(p.second);
+        }
+        for (auto &p : m_videoProducers) {
+            m_effectStack->removeService(p.second);
+        }
+        for (auto &p : m_timewarpProducers) {
+            m_effectStack->removeService(p.second);
+        }
         m_audioProducers.clear();
         m_videoProducers.clear();
         removeSequenceWarpResources();
