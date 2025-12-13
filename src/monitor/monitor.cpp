@@ -2628,6 +2628,9 @@ void Monitor::resetScene()
 
 void Monitor::buildSplitEffect(Mlt::Producer *original)
 {
+    if (!m_controller) {
+        return;
+    }
     m_splitEffect.reset(new Mlt::Filter(pCore->getProjectProfile(), "frei0r.alphagrad"));
     if ((m_splitEffect != nullptr) && m_splitEffect->is_valid()) {
         m_splitEffect->set("0", 0.5);    // 0 is the Clip left parameter
