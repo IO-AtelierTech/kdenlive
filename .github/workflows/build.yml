@@ -82,13 +82,22 @@ jobs:
 
       # -----------------------------------------------------------------------
       # Clear Android environment (Linux only)
-      # GitHub runners have Android SDK which confuses CraftMaster
+      # GitHub runners have Android SDK which confuses CraftMaster's platform detection
       # -----------------------------------------------------------------------
       - name: Clear Android environment
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          echo "Unsetting Android environment variables..."
+          echo "Removing Android SDK paths that confuse CraftMaster..."
+          # Move Android SDK out of the way (can't delete, might be needed by other jobs)
+          if [ -d "$ANDROID_HOME" ]; then
+            echo "Moving $ANDROID_HOME to /tmp/android-sdk-backup"
+            sudo mv "$ANDROID_HOME" /tmp/android-sdk-backup || true
+          fi
+          if [ -d "$ANDROID_SDK_ROOT" ] && [ "$ANDROID_SDK_ROOT" != "$ANDROID_HOME" ]; then
+            sudo mv "$ANDROID_SDK_ROOT" /tmp/android-sdk-root-backup || true
+          fi
+          # Also unset the environment variables
           echo "ANDROID_HOME=" >> $GITHUB_ENV
           echo "ANDROID_NDK=" >> $GITHUB_ENV
           echo "ANDROID_NDK_HOME=" >> $GITHUB_ENV
