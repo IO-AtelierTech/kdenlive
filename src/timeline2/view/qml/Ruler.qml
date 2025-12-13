@@ -14,23 +14,23 @@ import org.kde.kdenlive as K
 Item {
     id: rulerRoot
     // The standard width for labels. Depends on format used (frame number or full timecode)
-    property int labelSize: fontMetrics.boundingRect(timeline.timecode(36000)).width
+    property int labelSize: fontMetrics.boundingRect(timeline ? timeline.timecode(36000) : "00:00:00:00").width
     // The spacing between labels. Depends on labelSize
     property real labelSpacing: labelSize
     // The space we want between each ticks in the ruler
-    property real tickSpacing: timeline.scaleFactor
+    property real tickSpacing: timeline ? timeline.scaleFactor : 1.0
     property alias rulerZone : zone
-    property int workingPreview : timeline.workingPreview
-    property int timecodeOffset : timeline.timecodeOffset
+    property int workingPreview : timeline ? timeline.workingPreview : -1
+    property int timecodeOffset : timeline ? timeline.timecodeOffset : 0
     property int labelMod: 1
-    property bool useTimelineRuler : timeline.useRuler
+    property bool useTimelineRuler : timeline ? timeline.useRuler : true
     property int zoneHeight: Math.ceil(root.baseUnit / 2) + 1
     property bool showZoneLabels: false
     property bool resizeActive: false // Used to decide which mouse cursor we should display
     property bool hoverGuide: false
     property bool hoverResizeHandle: false
     property int cursorShape: resizeActive ? Qt.SizeHorCursor : hoverResizeHandle ? Qt.SizeHorCursor : hoverGuide ? Qt.PointingHandCursor : Qt.ArrowCursor
-    property var effectZones: timeline.masterEffectZones
+    property var effectZones: timeline ? timeline.masterEffectZones : []
     property int guideLabelHeight: K.KdenliveSettings.showmarkers ? fontMetrics.height : 0
     property int previewHeight: Math.ceil(timecodeContainer.height / 5)
     property color dimmedColor: (activePalette.text.r + activePalette.text.g + activePalette.text.b > 1.5) ? Qt.darker(activePalette.text, 1.3) : Qt.lighter(activePalette.text, 1.3)
@@ -542,8 +542,9 @@ Item {
         model: Math.ceil(rulercontainer.width / rulerRoot.tickSpacing) + 2
         property int offset: Math.floor(scrollView.contentX /rulerRoot.tickSpacing)
         Item {
-            property int realPos: (tickRepeater.offset + index) * rulerRoot.tickSpacing / timeline.scaleFactor
-            x: Math.round(realPos * timeline.scaleFactor)
+            property real scaleFactor: timeline ? timeline.scaleFactor : 1.0
+            property int realPos: (tickRepeater.offset + index) * rulerRoot.tickSpacing / scaleFactor
+            x: Math.round(realPos * scaleFactor)
             height: parent.height
             property bool showText: (tickRepeater.offset + index)%rulerRoot.labelMod == 0
             Rectangle {
@@ -555,7 +556,7 @@ Item {
             Label {
                 visible: parent.showText
                 anchors.top: parent.top
-                text: timeline.timecode(parent.realPos + rulerRoot.timecodeOffset)
+                text: timeline ? timeline.timecode(parent.realPos + rulerRoot.timecodeOffset) : ""
                 font: miniFont
                 color: rulerRoot.dimmedColor
             }
