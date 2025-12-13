@@ -96,11 +96,11 @@ jobs:
           & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" --setup
 
       # -----------------------------------------------------------------------
-      # Restore blueprint repository configuration
+      # Add KDE blueprints repository
       # -----------------------------------------------------------------------
-      - name: Craft unshelve
+      - name: Add blueprint repository
         run: |
-          & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --unshelve "$env:GITHUB_WORKSPACE/.craft.shelf"
+          & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c craft/craft-blueprints-kde
 
       # -----------------------------------------------------------------------
       # Configure source directory override
