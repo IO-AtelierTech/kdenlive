@@ -298,6 +298,13 @@ Monitor::Monitor(Kdenlive::MonitorId id, MonitorManager *manager, QWidget *paren
         connect(m_recManager, &RecManager::addClipToProject, this, &Monitor::addClipToProject);
         connect(m_glMonitor, &VideoWidget::startDrag, this, &Monitor::slotStartDrag);
         connect(pCore.get(), &Core::binClipDeleted, m_glMonitor->getControllerProxy(), &MonitorProxy::clipDeleted);
+        // Release producer before clip deletion to avoid dangling references
+        connect(pCore.get(), &Core::binClipAboutToBeDeleted, this, [this](const QString &clipId) {
+            if (m_controller && m_controller->clipId() == clipId) {
+                // This clip is being deleted - release our producer reference
+                m_glMonitor->setProducer(nullptr, isActive(), -1);
+            }
+        });
         // Show timeline clip usage
         connect(pCore.get(), &Core::clipInstanceResized, this, [this](const QString &binId) {
             if (m_controller && activeClipId() == binId) {

@@ -537,6 +537,8 @@ Q_SIGNALS:
     void gotMissingClipsCount(int total, int used);
     /** @brief Tell the current progress task to stop */
     void stopProgressTask();
+    /** @brief A project clip is about to be deleted - release producer references */
+    void binClipAboutToBeDeleted(const QString &clipId);
     /** @brief A project clip was deleted */
     void binClipDeleted(int cid);
     /** @brief An MLT warning was issued */

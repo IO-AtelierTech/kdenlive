@@ -2412,6 +2412,9 @@ void ProjectClip::purgeReferences(const QUuid &activeUuid, bool deleteClip)
 
 bool ProjectClip::selfSoftDelete(Fun &undo, Fun &redo)
 {
+    // Notify monitor to release producer reference before deletion
+    Q_EMIT pCore->binClipAboutToBeDeleted(m_binId);
+
     Fun operation = [this]() {
         // Free audio thumb data and timeline producers
         pCore->taskManager.discardJobs(ObjectId(KdenliveObjectType::BinClip, m_binId.toInt(), QUuid()));
