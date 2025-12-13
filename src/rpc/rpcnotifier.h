@@ -91,6 +91,12 @@ public Q_SLOTS:
     void notifyProjectModified(bool modified);
     void notifyTimelineChanged();
 
+    // Render notification slots
+    void notifyRenderStarted(const QString &jobId, const QString &outputPath);
+    void notifyRenderProgress(const QString &jobId, int progress, int frame);
+    void notifyRenderCompleted(const QString &jobId, const QString &outputPath);
+    void notifyRenderError(const QString &jobId, const QString &error);
+
 Q_SIGNALS:
     /**
      * @brief Emitted when a notification is sent

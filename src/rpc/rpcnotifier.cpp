@@ -107,3 +107,24 @@ void RpcNotifier::notifyTimelineChanged()
 {
     notify(QStringLiteral("timeline.changed"), QJsonObject{});
 }
+
+void RpcNotifier::notifyRenderStarted(const QString &jobId, const QString &outputPath)
+{
+    notify(QStringLiteral("render.started"), QJsonObject{{QStringLiteral("jobId"), jobId}, {QStringLiteral("outputPath"), outputPath}});
+}
+
+void RpcNotifier::notifyRenderProgress(const QString &jobId, int progress, int frame)
+{
+    notify(QStringLiteral("render.progress"),
+           QJsonObject{{QStringLiteral("jobId"), jobId}, {QStringLiteral("progress"), progress}, {QStringLiteral("frame"), frame}});
+}
+
+void RpcNotifier::notifyRenderCompleted(const QString &jobId, const QString &outputPath)
+{
+    notify(QStringLiteral("render.completed"), QJsonObject{{QStringLiteral("jobId"), jobId}, {QStringLiteral("outputPath"), outputPath}});
+}
+
+void RpcNotifier::notifyRenderError(const QString &jobId, const QString &error)
+{
+    notify(QStringLiteral("render.error"), QJsonObject{{QStringLiteral("jobId"), jobId}, {QStringLiteral("error"), error}});
+}

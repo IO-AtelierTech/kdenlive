@@ -6,6 +6,9 @@ set(kdenlive_SRCS
   rpc/rpcserver.cpp
   rpc/rpcdispatcher.cpp
   rpc/rpcnotifier.cpp
+  rpc/handlers/assetshandler.cpp
   rpc/handlers/connectionhandler.cpp
+  rpc/handlers/effectshandler.cpp
   rpc/handlers/projecthandler.cpp
+  rpc/handlers/renderhandler.cpp
   PARENT_SCOPE)
