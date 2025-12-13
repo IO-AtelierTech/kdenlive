@@ -460,6 +460,17 @@ void Core::initGUI(const QString &MltPath, const QUrl &Url, const QStringList &c
     m_rpcServer = new RpcServer(this);
     m_rpcServer->start();
 
+    // Connect MainWindow render signals to RPC notifier
+    connect(m_mainWindow, &MainWindow::renderProgressChanged, m_rpcServer->notifier(),
+            [this](const QString &url, int progress, int frame) { m_rpcServer->notifier()->notifyRenderProgress(url, progress, frame); });
+    connect(m_mainWindow, &MainWindow::renderFinished, m_rpcServer->notifier(), [this](const QString &url, int status, const QString &error) {
+        if (status == 0) {
+            m_rpcServer->notifier()->notifyRenderCompleted(url, url);
+        } else {
+            m_rpcServer->notifier()->notifyRenderError(url, error);
+        }
+    });
+
     projectManager()->init(Url, clipsToLoad);
     m_mainWindow->init();
 
