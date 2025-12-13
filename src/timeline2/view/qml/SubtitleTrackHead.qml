@@ -47,8 +47,8 @@ Rectangle {
     }
     ComboBox {
         id: subLabel
-        model: timeline.subtitlesList
-        property int subIndex: timeline.activeSubPosition
+        model: timeline ? timeline.subtitlesList : []
+        property int subIndex: timeline ? timeline.activeSubPosition : -1
         onSubIndexChanged: {
             subLabel.currentIndex = subIndex
         }
