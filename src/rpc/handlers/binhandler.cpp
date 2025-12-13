@@ -17,8 +17,8 @@
 #include "project/projectmanager.h"
 #include "undohelper.hpp"
 
+#include <QCoreApplication>
 #include <QJsonArray>
-#include <QTimer>
 #include <QUrl>
 
 BinHandler::BinHandler(RpcNotifier *notifier, QObject *parent)
@@ -279,11 +279,18 @@ auto BinHandler::handleImportClip(const QJsonObject &params) -> QJsonObject
     // Disable profile check dialog for RPC imports
     pCore->bin()->shouldCheckProfile = false;
 
-    // Defer the import to avoid blocking and potential dialogs
-    QTimer::singleShot(100, [url]() { pCore->bin()->slotAddClipToProject(url); });
+    // Import synchronously - this returns the bin clip ID
+    QString clipId = pCore->bin()->slotAddClipToProject(url);
 
-    // Return immediately - client should poll bin.listClips or wait for notification
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("importing"), true}, {QStringLiteral("url"), urlStr}}}};
+    // Let UI settle
+    QCoreApplication::processEvents();
+
+    if (clipId.isEmpty()) {
+        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
+                                                                 {QStringLiteral("message"), QStringLiteral("Failed to import clip")}}}};
+    }
+
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("clipId"), clipId}, {QStringLiteral("url"), urlStr}}}};
 }
 
 auto BinHandler::handleImportClips(const QJsonObject &params) -> QJsonObject
@@ -320,16 +327,29 @@ auto BinHandler::handleImportClips(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("No valid URLs provided")}}}};
     }
 
-    int count = urlList.count();
-
     // Disable profile check dialog for RPC imports
     pCore->bin()->shouldCheckProfile = false;
 
-    // Defer the import to avoid blocking and potential dialogs
-    QTimer::singleShot(100, [urlList, folderId]() { pCore->bin()->droppedUrls(urlList, folderId); });
+    // Import each clip synchronously and collect IDs
+    QJsonArray importedClips;
+    QJsonArray failedUrls;
 
-    // Return immediately - client should poll bin.listClips or wait for notification
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("importing"), count}}}};
+    for (const QUrl &url : urlList) {
+        QString clipId = pCore->bin()->slotAddClipToProject(url);
+        if (!clipId.isEmpty()) {
+            QJsonObject clipInfo;
+            clipInfo[QStringLiteral("clipId")] = clipId;
+            clipInfo[QStringLiteral("url")] = url.toLocalFile();
+            importedClips.append(clipInfo);
+        } else {
+            failedUrls.append(url.toLocalFile());
+        }
+    }
+
+    // Let UI settle
+    QCoreApplication::processEvents();
+
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("imported"), importedClips}, {QStringLiteral("failed"), failedUrls}}}};
 }
 
 auto BinHandler::handleDeleteClip(const QJsonObject &params) -> QJsonObject
