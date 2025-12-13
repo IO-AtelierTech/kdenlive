@@ -124,8 +124,8 @@ auto ProjectHandler::handleOpen(const QJsonObject &params) -> QJsonObject
     }
 
     // Defer the open operation to run after response is sent
-    // This prevents QML setup from disrupting the WebSocket response
-    QTimer::singleShot(0, [url]() {
+    // Use 100ms delay to ensure WebSocket response is fully transmitted
+    QTimer::singleShot(100, [url]() {
         pCore->projectManager()->doOpenFile(url, nullptr);
         QCoreApplication::processEvents();
     });
@@ -193,8 +193,8 @@ auto ProjectHandler::handleClose(const QJsonObject &params) -> QJsonObject
     }
 
     // Defer the close operation to run after response is sent
-    // This prevents QML cleanup from disrupting the WebSocket response
-    QTimer::singleShot(0, []() {
+    // Use 100ms delay to ensure WebSocket response is fully transmitted
+    QTimer::singleShot(100, []() {
         pCore->projectManager()->closeCurrentDocument(false);
         QCoreApplication::processEvents();
     });
@@ -214,8 +214,8 @@ auto ProjectHandler::handleNew(const QJsonObject &params) -> QJsonObject
     QString profile = params.value(QStringLiteral("profile")).toString();
 
     // Defer the new project operation to run after response is sent
-    // This prevents QML setup from disrupting the WebSocket response
-    QTimer::singleShot(0, [profile]() {
+    // Use 100ms delay to ensure WebSocket response is fully transmitted
+    QTimer::singleShot(100, [profile]() {
         if (profile.isEmpty()) {
             pCore->projectManager()->newFile(false);
         } else {
