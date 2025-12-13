@@ -830,7 +830,11 @@ void Monitor::slotForceSize(QAction *a)
 
 void Monitor::buildBackgroundedProducer(int pos)
 {
-    if (m_controller == nullptr) {
+    if (m_controller == nullptr || pCore->closing) {
+        return;
+    }
+    auto *doc = pCore->currentDoc();
+    if (!doc || doc->closing) {
         return;
     }
     auto producer = m_controller->sequenceProducer(m_activeSequence);
@@ -2628,7 +2632,11 @@ void Monitor::resetScene()
 
 void Monitor::buildSplitEffect(Mlt::Producer *original)
 {
-    if (!m_controller) {
+    if (!m_controller || pCore->closing) {
+        return;
+    }
+    auto *doc = pCore->currentDoc();
+    if (!doc || doc->closing) {
         return;
     }
     m_splitEffect.reset(new Mlt::Filter(pCore->getProjectProfile(), "frei0r.alphagrad"));
