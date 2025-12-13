@@ -2561,6 +2561,7 @@ void MainWindow::slotCheckRenderStatus()
 void MainWindow::setRenderingProgress(const QString &url, int progress, int frame)
 {
     Q_EMIT setRenderProgress(progress);
+    Q_EMIT renderProgressChanged(url, progress, frame);
     if (m_renderWidget) {
         m_renderWidget->setRenderProgress(url, progress, frame);
     }
@@ -2569,6 +2570,7 @@ void MainWindow::setRenderingProgress(const QString &url, int progress, int fram
 void MainWindow::setRenderingFinished(const QString &url, int status, const QString &error)
 {
     Q_EMIT setRenderProgress(100);
+    Q_EMIT renderFinished(url, status, error);
     if (m_renderWidget) {
         m_renderWidget->setRenderStatus(url, status, error);
     }
