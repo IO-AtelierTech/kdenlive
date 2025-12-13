@@ -16,6 +16,8 @@
 #include "rpcdispatcher.h"
 #include "rpcnotifier.h"
 
+#include "kdenlivesettings.h"
+
 #include <QHostAddress>
 #include <QJsonDocument>
 
@@ -52,17 +54,27 @@ void RpcServer::setupHandlers()
 
 bool RpcServer::start(quint16 port, const QString &authToken)
 {
+    // Check if RPC is enabled in settings
+    if (!KdenliveSettings::rpcEnabled()) {
+        qInfo() << "RpcServer: RPC server disabled in settings";
+        return false;
+    }
+
     if (m_server && m_server->isListening()) {
         return true; // Already running
     }
 
-    m_authToken = authToken;
-    m_authenticated = authToken.isEmpty(); // No auth needed if no token set
+    // Use settings if default values provided
+    quint16 actualPort = (port == RPC_DEFAULT_PORT) ? static_cast<quint16>(KdenliveSettings::rpcPort()) : port;
+    QString actualToken = authToken.isEmpty() ? KdenliveSettings::rpcAuthToken() : authToken;
+
+    m_authToken = actualToken;
+    m_authenticated = m_authToken.isEmpty(); // No auth needed if no token set
 
     m_server = std::make_unique<QWebSocketServer>(QStringLiteral("Kdenlive RPC"), QWebSocketServer::NonSecureMode, this);
 
-    if (!m_server->listen(QHostAddress::LocalHost, port)) {
-        qWarning() << "RpcServer: Failed to start on port" << port << "-" << m_server->errorString();
+    if (!m_server->listen(QHostAddress::LocalHost, actualPort)) {
+        qWarning() << "RpcServer: Failed to start on port" << actualPort << "-" << m_server->errorString();
         m_server.reset();
         return false;
     }

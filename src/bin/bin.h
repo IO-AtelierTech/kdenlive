@@ -234,8 +234,9 @@ public:
     /** @brief Returns the state of a given clip: AudioOnly, VideoOnly, Disabled (Disabled means it has audio and video capabilities */
     std::pair<PlaylistState::ClipState, ClipType::ProducerType> getClipState(int itemId) const;
 
-    /** @brief Add markers on clip \@param binId at \@param markersData with @comments text if given */
-    void addClipMarker(const QString &binId, const QMap<int, QString> &markersData);
+    /** @brief Add markers on clip \@param binId at \@param markersData with @comments text if given
+        @param type Marker type (-1 to use default) */
+    void addClipMarker(const QString &binId, const QMap<int, QString> &markersData, int type = -1);
 
     /** @brief Get the count of all markers in all clips using this category */
     int getAllClipMarkers(int category) const;
@@ -458,11 +459,11 @@ private Q_SLOTS:
     void switchTag(const QString &tag, bool add);
     /** @brief Update project tags
      */
-    void updateTags(const QMap <int, QStringList> &previousTags, const QMap <int, QStringList> &tags);
+    void updateTags(const QMap<int, QStringList> &previousTags, const QMap<int, QStringList> &tags);
     void rebuildFilters(int tagsCount);
     /** @brief Switch a tag on  a clip list
      */
-    void editTags(const QList <QString> &allClips, const QString &tag, bool add);
+    void editTags(const QList<QString> &allClips, const QString &tag, bool add);
     /** @brief Update the string description of the clips count, like: 123 clips (3 selected). */
     void updateClipsCount();
     /** @brief Update the menu entry listing the occurrences of a clip in timeline. */
@@ -513,7 +514,8 @@ public Q_SLOTS:
     /** @brief Abort all ongoing operations to prepare close. */
     void abortOperations();
     void doDisplaySimpleMessage(const QString &text, KMessageWidget::MessageType type);
-    void doDisplayMessage(const QString &text, KMessageWidget::MessageType type, const QList<QAction *> &actions = QList<QAction *>(), bool showCloseButton = false, BinMessage::BinCategory messageCategory = BinMessage::BinCategory::NoMessage);
+    void doDisplayMessage(const QString &text, KMessageWidget::MessageType type, const QList<QAction *> &actions = QList<QAction *>(),
+                          bool showCloseButton = false, BinMessage::BinCategory messageCategory = BinMessage::BinCategory::NoMessage);
     void doDisplayMessage(const QString &text, KMessageWidget::MessageType type, const QString logInfo);
     /** @brief Select a clip in the Bin from its id. */
     void selectClipById(const QString &id, int frame = -1, const QPoint &zone = QPoint(), bool activateMonitor = true);

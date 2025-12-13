@@ -49,7 +49,9 @@ class TextBasedEdit;
 class GuidesList;
 class KeyframeModelList;
 class TimeRemap;
+#ifdef ENABLE_RPC
 class RpcServer;
+#endif
 
 namespace Mlt {
 class Repository;
@@ -153,8 +155,10 @@ public:
     bool currentRemap(const QString &clipId);
     /** @brief Returns a pointer to the audio mixer. */
     MixerManager *mixer();
+#ifdef ENABLE_RPC
     /** @brief Returns a pointer to the RPC server. */
     RpcServer *rpcServer();
+#endif
     ToolType::ProjectTool activeTool();
 
     /** @brief Returns a pointer to MLT's repository */
@@ -390,7 +394,9 @@ private:
     GuidesList *m_guidesList{nullptr};
     TimeRemap *m_timeRemapWidget{nullptr};
     MixerManager *m_mixerWidget{nullptr};
+#ifdef ENABLE_RPC
     RpcServer *m_rpcServer{nullptr};
+#endif
     MediaBrowser *m_mediaBrowser{nullptr};
 
     /** @brief Current project's profile path */

@@ -1620,4 +1620,18 @@
       <default>true</default>
     </entry>
     </group>
+    <group name="rpc">
+    <entry name="rpcEnabled" type="Bool">
+      <label>Enable JSON-RPC WebSocket server for external automation.</label>
+      <default>true</default>
+    </entry>
+    <entry name="rpcPort" type="Int">
+      <label>WebSocket server port number.</label>
+      <default>9876</default>
+    </entry>
+    <entry name="rpcAuthToken" type="String">
+      <label>Optional authentication token for RPC connections (leave empty to disable auth).</label>
+      <default></default>
+    </entry>
+    </group>
 </kcfg>

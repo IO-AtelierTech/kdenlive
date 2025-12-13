@@ -46,6 +46,7 @@ endif()
 option(USE_DBUS "Build components using DBus" ${USE_DBUS_DEFAULT})
 
 option(BUILD_DESIGNERPLUGIN "Build plugin for Qt Designer" OFF)
+option(ENABLE_RPC "Enable JSON-RPC WebSocket server for external automation" ON)
 
 # Minimum versions of main dependencies.
 set(MLT_MIN_MAJOR_VERSION 7)
@@ -141,10 +142,14 @@ find_package(Qt${QT_MAJOR_VERSION}
     MultimediaWidgets
     NetworkAuth
     SvgWidgets
-    WebSockets
     Xml
     # Test
 )
+
+# Optional: WebSockets for RPC server
+if(ENABLE_RPC)
+    find_package(Qt${QT_MAJOR_VERSION} REQUIRED COMPONENTS WebSockets)
+endif()
 
 find_package(KDDockWidgets-qt6 2.4.0 REQUIRED)
 

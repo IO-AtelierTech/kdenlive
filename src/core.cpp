@@ -29,7 +29,10 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "profiles/profilerepository.hpp"
 #include "project/dialogs/guideslist.h"
 #include "project/projectmanager.h"
+#ifdef ENABLE_RPC
+#include "rpc/rpcnotifier.h"
 #include "rpc/rpcserver.h"
+#endif
 #include "timeline2/model/timelineitemmodel.hpp"
 #include "timeline2/view/timelinecontroller.h"
 #include "timeline2/view/timelinewidget.h"
@@ -456,6 +459,7 @@ void Core::initGUI(const QString &MltPath, const QUrl &Url, const QStringList &c
 
     m_monitorManager = new MonitorManager(this);
 
+#ifdef ENABLE_RPC
     // Initialize RPC server for external control
     m_rpcServer = new RpcServer(this);
     m_rpcServer->start();
@@ -470,6 +474,7 @@ void Core::initGUI(const QString &MltPath, const QUrl &Url, const QStringList &c
             m_rpcServer->notifier()->notifyRenderError(url, error);
         }
     });
+#endif
 
     projectManager()->init(Url, clipsToLoad);
     m_mainWindow->init();
@@ -903,10 +908,12 @@ MixerManager *Core::mixer()
     return m_mixerWidget;
 }
 
+#ifdef ENABLE_RPC
 RpcServer *Core::rpcServer()
 {
     return m_rpcServer;
 }
+#endif
 
 void Core::initLocale()
 {

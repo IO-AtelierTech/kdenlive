@@ -605,12 +605,12 @@ QJsonObject BinHandler::handleAddClipMarker(const QJsonObject &params)
     }
 
     QString comment = params.value(QStringLiteral("comment")).toString();
-    int type = params.value(QStringLiteral("type")).toInt(0);
+    int type = params.value(QStringLiteral("type")).toInt(-1);
 
     QMap<int, QString> markersData;
     markersData.insert(position, comment);
 
-    pCore->bin()->addClipMarker(clipId, markersData);
+    pCore->bin()->addClipMarker(clipId, markersData, type);
 
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("added"), true}}}};
 }
