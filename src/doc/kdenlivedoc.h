@@ -110,7 +110,6 @@ public:
     bool closing{false};
     /** @brief Get current document's producer. */
     const QByteArray getAndClearProjectXml();
-    double fps() const;
     int width() const;
     int height() const;
     QUrl url() const;

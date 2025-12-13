@@ -664,7 +664,7 @@ QJsonObject EffectsHandler::handleGetKeyframes(const QJsonObject &params)
     if (kfModel) {
         for (auto it = kfModel->begin(); it != kfModel->end(); ++it) {
             QJsonObject kfObj;
-            kfObj[QStringLiteral("frame")] = it->first.frames(doc->fps());
+            kfObj[QStringLiteral("frame")] = it->first.frames(pCore->getCurrentFps());
             kfObj[QStringLiteral("value")] = it->second.second.toString();
 
             QString typeStr;
@@ -742,7 +742,7 @@ QJsonObject EffectsHandler::handleSetKeyframe(const QJsonObject &params)
     }
 
     Q_UNUSED(property)
-    GenTime pos(frame, doc->fps());
+    GenTime pos(frame, pCore->getCurrentFps());
     bool success = keyframes->addKeyframe(pos, kfType);
 
     if (success && !value.isEmpty()) {
@@ -795,7 +795,7 @@ QJsonObject EffectsHandler::handleDeleteKeyframe(const QJsonObject &params)
                                                                  {QStringLiteral("message"), QStringLiteral("Effect does not support keyframes")}}}};
     }
 
-    GenTime pos(frame, doc->fps());
+    GenTime pos(frame, pCore->getCurrentFps());
     bool success = keyframes->removeKeyframe(pos);
 
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("success"), success}, {QStringLiteral("frame"), frame}}}};

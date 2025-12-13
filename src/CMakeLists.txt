@@ -346,7 +346,7 @@ if(NOT USE_DBUS)
 endif()
 
 if(ENABLE_RPC)
-    target_compile_definitions(kdenliveLib PRIVATE -DENABLE_RPC)
+    target_compile_definitions(kdenliveLib PUBLIC -DENABLE_RPC)
     target_link_libraries(kdenliveLib PUBLIC Qt${QT_MAJOR_VERSION}::WebSockets)
 endif()
 

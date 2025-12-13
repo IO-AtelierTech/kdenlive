@@ -151,7 +151,7 @@ QJsonObject CompositionHandler::handleAdd(const QJsonObject &params)
     }
 
     QString compositionId = params.value(QStringLiteral("compositionId")).toString(QStringLiteral("composite"));
-    int duration = params.value(QStringLiteral("duration")).toInt(static_cast<int>(doc->fps())); // Default to 1 second
+    int duration = params.value(QStringLiteral("duration")).toInt(static_cast<int>(pCore->getCurrentFps())); // Default to 1 second
 
     int newCompoId = controller->insertComposition(trackId, position, compositionId, true);
 

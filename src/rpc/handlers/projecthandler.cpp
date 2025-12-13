@@ -77,7 +77,7 @@ QJsonObject ProjectHandler::handleGetInfo(const QJsonObject & /*params*/)
     info[QStringLiteral("path")] = doc->url().toLocalFile();
     info[QStringLiteral("name")] = doc->url().fileName();
     info[QStringLiteral("modified")] = doc->isModified();
-    info[QStringLiteral("fps")] = doc->fps();
+    info[QStringLiteral("fps")] = pCore->getCurrentFps();
     info[QStringLiteral("width")] = doc->width();
     info[QStringLiteral("height")] = doc->height();
 
@@ -175,7 +175,7 @@ QJsonObject ProjectHandler::handleNew(const QJsonObject &params)
     }
 
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("created"), true},
-                                                              {QStringLiteral("fps"), doc->fps()},
+                                                              {QStringLiteral("fps"), pCore->getCurrentFps()},
                                                               {QStringLiteral("width"), doc->width()},
                                                               {QStringLiteral("height"), doc->height()}}}};
 }

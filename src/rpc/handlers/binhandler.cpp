@@ -571,7 +571,7 @@ QJsonObject BinHandler::handleGetClipMarkers(const QJsonObject &params)
 
     for (const CommentedTime &marker : allMarkers) {
         QJsonObject markerInfo;
-        markerInfo[QStringLiteral("position")] = marker.time().frames(doc->fps());
+        markerInfo[QStringLiteral("position")] = marker.time().frames(pCore->getCurrentFps());
         markerInfo[QStringLiteral("comment")] = marker.comment();
         markerInfo[QStringLiteral("type")] = marker.markerType();
         markers.append(markerInfo);
@@ -651,7 +651,7 @@ QJsonObject BinHandler::handleDeleteClipMarker(const QJsonObject &params)
                                                                  {QStringLiteral("message"), QStringLiteral("No marker model for clip")}}}};
     }
 
-    GenTime pos(position, doc->fps());
+    GenTime pos(position, pCore->getCurrentFps());
     bool success = markerModel->removeMarker(pos);
 
     if (!success) {

@@ -135,7 +135,7 @@ QJsonObject TimelineHandler::handleGetInfo(const QJsonObject & /*params*/)
     QJsonObject info;
     info[QStringLiteral("duration")] = model->duration();
     info[QStringLiteral("trackCount")] = model->getTracksCount();
-    info[QStringLiteral("fps")] = doc->fps();
+    info[QStringLiteral("fps")] = pCore->getCurrentFps();
     info[QStringLiteral("profile")] = doc->getDocumentProperty(QStringLiteral("kdenlive:docproperties.profile"));
 
     QPair<int, int> avTracks = model->getAVtracksCount();

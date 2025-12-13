@@ -296,8 +296,8 @@ QJsonObject RenderHandler::handleStop(const QJsonObject &params)
                                                                  {QStringLiteral("message"), QStringLiteral("Main window not available")}}}};
     }
 
-    // Emit abort signal for the specific job
-    Q_EMIT mw->renderWidget()->abortProcess(jobId);
+    // Call MainWindow's abort slot directly
+    mw->abortRenderJob(jobId);
 
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("stopped"), true}, {QStringLiteral("jobId"), jobId}}}};
 }
