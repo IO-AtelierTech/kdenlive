@@ -2025,7 +2025,7 @@ function getTrackColor(audio, header) {
                         }
                         height: Math.round(root.baseUnit * 0.7)
                         barMinWidth: root.baseUnit
-                        fitsZoom: timeline && timeline.scaleFactor === root.fitZoom() && root.scrollPos() === 0
+                        fitsZoom: timeline ? (timeline.scaleFactor === root.fitZoom() && root.scrollPos() === 0) : false
                         zoomFactor: scrollView.visibleArea.widthRatio
                         onProposeZoomFactor: (proposedValue) => {
                             timeline.scaleFactor = scrollView.width / Math.round(proposedValue * scrollView.contentWidth / root.timeScale)

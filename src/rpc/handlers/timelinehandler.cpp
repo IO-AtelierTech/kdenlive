@@ -390,17 +390,15 @@ auto TimelineHandler::handleInsertClip(const QJsonObject &params) -> QJsonObject
 
     int position = params.value(QStringLiteral("position")).toInt(0);
 
-    // Get the bin clip and create XML for insertion
+    // Verify the bin clip exists before insertion
     auto binClip = pCore->projectItemModel()->getClipByBinID(binId);
     if (!binClip) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::ClipNotFound},
                                                                  {QStringLiteral("message"), QStringLiteral("Bin clip not found: %1").arg(binId)}}}};
     }
 
-    QDomDocument doc2;
-    QDomElement xml = binClip->toXml(doc2, false, true);
-
-    int clipId = controller->insertClip(trackId, position, QString::fromUtf8(doc2.toByteArray()), true, true, false);
+    // insertClip expects a bin ID string (e.g., "4" or "A4/10/50"), not XML
+    int clipId = controller->insertClip(trackId, position, binId, true, true, false);
 
     if (clipId == -1) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
