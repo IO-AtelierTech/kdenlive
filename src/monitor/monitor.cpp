@@ -1965,8 +1965,9 @@ void Monitor::updateClipProducer(const QString &playlist)
 bool Monitor::slotOpenClip(const std::shared_ptr<ProjectClip> &controller, int in, int out, const QUuid &sequenceUuid)
 {
     m_activeSequence = QUuid();
-    if (controller != nullptr && pCore->currentDoc() && pCore->currentDoc()->closing) {
-        // Don't display a clip if we are closing
+    auto *doc = pCore->currentDoc();
+    if (!doc || doc->closing) {
+        // Don't display a clip if we are closing or no document
         return false;
     }
     if (m_qmlManager->sceneType() == MonitorSceneAutoMask && maskMode() != MaskModeType::MaskNone) {
@@ -2040,7 +2041,8 @@ bool Monitor::slotOpenClip(const std::shared_ptr<ProjectClip> &controller, int i
         // m_audioChannels->menuAction()->setVisible(false);
         m_streamAction->setVisible(false);
         checkOverlay();
-        if (pCore->currentDoc()->closing) {
+        auto *currentDoc = pCore->currentDoc();
+        if (!currentDoc || currentDoc->closing) {
             return false;
         }
         if (monitorVisible()) {
@@ -2065,8 +2067,13 @@ bool Monitor::slotOpenClip(const std::shared_ptr<ProjectClip> &controller, int i
         }
         ClipType::ProducerType type = controller->clipType();
         if (type == ClipType::AV || type == ClipType::Video || type == ClipType::SlideShow) {
-            m_glMonitor->rootObject()->setProperty(
-                "baseThumbPath", QStringLiteral("image://thumbnail/%1/%2/#").arg(controller->clipId(), pCore->currentDoc()->uuid().toString()));
+            auto *currentDoc = pCore->currentDoc();
+            if (currentDoc) {
+                m_glMonitor->rootObject()->setProperty("baseThumbPath",
+                                                       QStringLiteral("image://thumbnail/%1/%2/#").arg(controller->clipId(), currentDoc->uuid().toString()));
+            } else {
+                m_glMonitor->rootObject()->setProperty("baseThumbPath", QString());
+            }
         } else {
             m_glMonitor->rootObject()->setProperty("baseThumbPath", QString());
         }

@@ -92,7 +92,7 @@ class TestConnection(unittest.TestCase):
                 result = await client.call("rpc.getVersion")
                 self.assertIn("result", result)
                 self.assertIn("kdenlive", result["result"])
-                self.assertIn("rpcVersion", result["result"])
+                self.assertIn("rpc", result["result"])
 
         asyncio.run(run())
 

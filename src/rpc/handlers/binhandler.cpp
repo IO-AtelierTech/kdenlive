@@ -450,7 +450,9 @@ auto BinHandler::handleDeleteClips(const QJsonObject &params) -> QJsonObject
         pCore->projectManager()->undoStack()->push(new FunctionalUndoCommand(undo, redo, QStringLiteral("Delete bin clips")));
     }
 
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("deleted"), deleted}, {QStringLiteral("failed"), failed}}}};
+    // Return count as expected by API, plus detailed arrays for debugging
+    return QJsonObject{{QStringLiteral("result"),
+                        QJsonObject{{QStringLiteral("count"), deleted.size()}, {QStringLiteral("deleted"), deleted}, {QStringLiteral("failed"), failed}}}};
 }
 
 auto BinHandler::handleCreateFolder(const QJsonObject &params) -> QJsonObject
@@ -660,7 +662,7 @@ auto BinHandler::handleGetClipMarkers(const QJsonObject &params) -> QJsonObject
 
     auto markerModel = clip->markerModel();
     if (!markerModel) {
-        return QJsonObject{{QStringLiteral("result"), QJsonArray()}};
+        return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("markers"), QJsonArray()}}}};
     }
 
     QJsonArray markers;
@@ -668,13 +670,15 @@ auto BinHandler::handleGetClipMarkers(const QJsonObject &params) -> QJsonObject
 
     for (const CommentedTime &marker : allMarkers) {
         QJsonObject markerInfo;
-        markerInfo[QStringLiteral("position")] = marker.time().frames(pCore->getCurrentFps());
+        int position = marker.time().frames(pCore->getCurrentFps());
+        markerInfo[QStringLiteral("id")] = position; // Use position as ID (markers are identified by position)
+        markerInfo[QStringLiteral("position")] = position;
         markerInfo[QStringLiteral("comment")] = marker.comment();
         markerInfo[QStringLiteral("type")] = marker.markerType();
         markers.append(markerInfo);
     }
 
-    return QJsonObject{{QStringLiteral("result"), markers}};
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("markers"), markers}}}};
 }
 
 auto BinHandler::handleAddClipMarker(const QJsonObject &params) -> QJsonObject
@@ -714,7 +718,8 @@ auto BinHandler::handleAddClipMarker(const QJsonObject &params) -> QJsonObject
 
     pCore->bin()->addClipMarker(clipId, markersData, type);
 
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("added"), true}}}};
+    // Return position as markerId (markers are identified by position in Kdenlive)
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("markerId"), position}}}};
 }
 
 auto BinHandler::handleDeleteClipMarker(const QJsonObject &params) -> QJsonObject
@@ -740,10 +745,14 @@ auto BinHandler::handleDeleteClipMarker(const QJsonObject &params) -> QJsonObjec
                                                                  {QStringLiteral("message"), QStringLiteral("Missing 'clipId' parameter")}}}};
     }
 
-    int position = params.value(QStringLiteral("position")).toInt(-1);
+    // Accept either 'markerId' or 'position' (markerId is preferred, position for backwards compat)
+    int position = params.value(QStringLiteral("markerId")).toInt(-1);
+    if (position < 0) {
+        position = params.value(QStringLiteral("position")).toInt(-1);
+    }
     if (position < 0) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
-                                                                 {QStringLiteral("message"), QStringLiteral("Missing 'position' parameter")}}}};
+                                                                 {QStringLiteral("message"), QStringLiteral("Missing 'markerId' parameter")}}}};
     }
 
     auto clip = model->getClipByBinID(clipId);

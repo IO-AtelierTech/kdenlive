@@ -23,3 +23,8 @@ compile_commands.json
 
 # Artefacts from running KDE CI locally
 kde-ci-reports/*
+
+# Development planning docs (not for upstream)
+CLAUDE.md
+QA-STRATEGY.md
+TODO.md.bak

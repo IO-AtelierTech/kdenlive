@@ -37,7 +37,7 @@ public:
 
 private:
     static QJsonObject handleGetInfo(const QJsonObject &params);
-    QJsonObject handleOpen(const QJsonObject &params);
+    static QJsonObject handleOpen(const QJsonObject &params);
     QJsonObject handleSave(const QJsonObject &params);
     QJsonObject handleClose(const QJsonObject &params);
     static QJsonObject handleNew(const QJsonObject &params);
