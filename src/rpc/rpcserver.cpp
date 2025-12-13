@@ -4,10 +4,13 @@
 */
 
 #include "rpcserver.h"
+#include "handlers/assetshandler.h"
 #include "handlers/binhandler.h"
 #include "handlers/compositionhandler.h"
 #include "handlers/connectionhandler.h"
+#include "handlers/effectshandler.h"
 #include "handlers/projecthandler.h"
+#include "handlers/renderhandler.h"
 #include "handlers/timelinehandler.h"
 #include "handlers/transitionhandler.h"
 #include "rpcdispatcher.h"
@@ -40,6 +43,11 @@ void RpcServer::setupHandlers()
     m_dispatcher->registerHandler(new BinHandler(m_notifier.get(), this));
     m_dispatcher->registerHandler(new TransitionHandler(m_notifier.get(), this));
     m_dispatcher->registerHandler(new CompositionHandler(m_notifier.get(), this));
+
+    // Register effects, assets, and render handlers
+    m_dispatcher->registerHandler(new EffectsHandler(m_notifier.get(), this));
+    m_dispatcher->registerHandler(new AssetsHandler(m_notifier.get(), this));
+    m_dispatcher->registerHandler(new RenderHandler(m_notifier.get(), this));
 }
 
 bool RpcServer::start(quint16 port, const QString &authToken)
