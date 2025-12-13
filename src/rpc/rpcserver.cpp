@@ -4,8 +4,12 @@
 */
 
 #include "rpcserver.h"
+#include "handlers/binhandler.h"
+#include "handlers/compositionhandler.h"
 #include "handlers/connectionhandler.h"
 #include "handlers/projecthandler.h"
+#include "handlers/timelinehandler.h"
+#include "handlers/transitionhandler.h"
 #include "rpcdispatcher.h"
 #include "rpcnotifier.h"
 
@@ -30,6 +34,12 @@ void RpcServer::setupHandlers()
     // Register built-in handlers
     m_dispatcher->registerHandler(new ConnectionHandler(m_notifier.get(), m_dispatcher.get(), this));
     m_dispatcher->registerHandler(new ProjectHandler(m_notifier.get(), this));
+
+    // Register timeline, bin, and transition handlers
+    m_dispatcher->registerHandler(new TimelineHandler(m_notifier.get(), this));
+    m_dispatcher->registerHandler(new BinHandler(m_notifier.get(), this));
+    m_dispatcher->registerHandler(new TransitionHandler(m_notifier.get(), this));
+    m_dispatcher->registerHandler(new CompositionHandler(m_notifier.get(), this));
 }
 
 bool RpcServer::start(quint16 port, const QString &authToken)
