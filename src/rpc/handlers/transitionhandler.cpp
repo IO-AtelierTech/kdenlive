@@ -29,20 +29,20 @@ TransitionHandler::TransitionHandler(RpcNotifier *notifier, QObject *parent)
 
 TransitionHandler::~TransitionHandler() = default;
 
-QString TransitionHandler::prefix() const
+auto TransitionHandler::prefix() const -> QString
 {
     // This handler handles both transition.* and composition.* - we return transition as the main prefix
     // The dispatcher will also register us for composition.* methods
     return QStringLiteral("transition");
 }
 
-QStringList TransitionHandler::supportedMethods() const
+auto TransitionHandler::supportedMethods() const -> QStringList
 {
     return QStringList{// Transition methods
                        QStringLiteral("list"), QStringLiteral("add"), QStringLiteral("remove"), QStringLiteral("getProperties"), QStringLiteral("setProperty")};
 }
 
-QJsonObject TransitionHandler::handle(const QString &method, const QJsonObject &params)
+auto TransitionHandler::handle(const QString &method, const QJsonObject &params) -> QJsonObject
 {
     // Handle transition.* methods
     if (method == QLatin1String("list")) {
@@ -65,19 +65,31 @@ QJsonObject TransitionHandler::handle(const QString &method, const QJsonObject &
                                                              {QStringLiteral("message"), QStringLiteral("Unknown method: transition.%1").arg(method)}}}};
 }
 
-QJsonObject TransitionHandler::makeProjectNotOpenError()
+auto TransitionHandler::makeProjectNotOpenError() -> QJsonObject
 {
     return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::ProjectNotOpen},
                                                              {QStringLiteral("message"), QStringLiteral("No project is currently open")}}}};
 }
 
-QJsonObject TransitionHandler::makeNoTimelineError()
+auto TransitionHandler::makeNoTimelineError() -> QJsonObject
 {
-    return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
+    return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::TimelineNotReady},
                                                              {QStringLiteral("message"), QStringLiteral("No timeline is currently active")}}}};
 }
 
-QJsonObject TransitionHandler::handleTransitionList(const QJsonObject & /*params*/)
+auto TransitionHandler::makeApplicationClosingError() -> QJsonObject
+{
+    return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::ApplicationClosing},
+                                                             {QStringLiteral("message"), QStringLiteral("Application is shutting down")}}}};
+}
+
+auto TransitionHandler::makeWindowNotAvailableError() -> QJsonObject
+{
+    return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::WindowNotAvailable},
+                                                             {QStringLiteral("message"), QStringLiteral("Main window not available")}}}};
+}
+
+auto TransitionHandler::handleTransitionList(const QJsonObject & /*params*/) -> QJsonObject
 {
     // Get all available transitions from the repository
     auto allTransitions = TransitionsRepository::get()->getNames();
@@ -102,14 +114,28 @@ QJsonObject TransitionHandler::handleTransitionList(const QJsonObject & /*params
     return QJsonObject{{QStringLiteral("result"), transitions}};
 }
 
-QJsonObject TransitionHandler::handleTransitionAdd(const QJsonObject &params)
+auto TransitionHandler::handleTransitionAdd(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
-    auto *controller = pCore->window()->getCurrentTimeline()->controller();
+    // Check window availability before accessing timeline
+    if (!pCore->window()) {
+        return makeWindowNotAvailableError();
+    }
+
+    auto *timeline = pCore->window()->getCurrentTimeline();
+    if (!timeline) {
+        return makeNoTimelineError();
+    }
+    auto *controller = timeline->controller();
     if (!controller) {
         return makeNoTimelineError();
     }
@@ -153,14 +179,28 @@ QJsonObject TransitionHandler::handleTransitionAdd(const QJsonObject &params)
                                                              {QStringLiteral("message"), QStringLiteral("Missing clipId1 parameter")}}}};
 }
 
-QJsonObject TransitionHandler::handleTransitionRemove(const QJsonObject &params)
+auto TransitionHandler::handleTransitionRemove(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
-    auto *controller = pCore->window()->getCurrentTimeline()->controller();
+    // Check window availability before accessing timeline
+    if (!pCore->window()) {
+        return makeWindowNotAvailableError();
+    }
+
+    auto *timeline = pCore->window()->getCurrentTimeline();
+    if (!timeline) {
+        return makeNoTimelineError();
+    }
+    auto *controller = timeline->controller();
     if (!controller) {
         return makeNoTimelineError();
     }
@@ -187,14 +227,28 @@ QJsonObject TransitionHandler::handleTransitionRemove(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("removed"), true}}}};
 }
 
-QJsonObject TransitionHandler::handleTransitionGetProperties(const QJsonObject &params)
+auto TransitionHandler::handleTransitionGetProperties(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
-    auto *controller = pCore->window()->getCurrentTimeline()->controller();
+    // Check window availability before accessing timeline
+    if (!pCore->window()) {
+        return makeWindowNotAvailableError();
+    }
+
+    auto *timeline = pCore->window()->getCurrentTimeline();
+    if (!timeline) {
+        return makeNoTimelineError();
+    }
+    auto *controller = timeline->controller();
     if (!controller) {
         return makeNoTimelineError();
     }
@@ -226,14 +280,28 @@ QJsonObject TransitionHandler::handleTransitionGetProperties(const QJsonObject &
     return QJsonObject{{QStringLiteral("result"), properties}};
 }
 
-QJsonObject TransitionHandler::handleTransitionSetProperty(const QJsonObject &params)
+auto TransitionHandler::handleTransitionSetProperty(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
-    auto *controller = pCore->window()->getCurrentTimeline()->controller();
+    // Check window availability before accessing timeline
+    if (!pCore->window()) {
+        return makeWindowNotAvailableError();
+    }
+
+    auto *timeline = pCore->window()->getCurrentTimeline();
+    if (!timeline) {
+        return makeNoTimelineError();
+    }
+    auto *controller = timeline->controller();
     if (!controller) {
         return makeNoTimelineError();
     }
@@ -274,14 +342,28 @@ QJsonObject TransitionHandler::handleTransitionSetProperty(const QJsonObject &pa
                                                              {QStringLiteral("message"), QStringLiteral("Unknown property: %1").arg(property)}}}};
 }
 
-QJsonObject TransitionHandler::handleCompositionList(const QJsonObject & /*params*/)
+auto TransitionHandler::handleCompositionList(const QJsonObject & /*params*/) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
-    auto *controller = pCore->window()->getCurrentTimeline()->controller();
+    // Check window availability before accessing timeline
+    if (!pCore->window()) {
+        return makeWindowNotAvailableError();
+    }
+
+    auto *timeline = pCore->window()->getCurrentTimeline();
+    if (!timeline) {
+        return makeNoTimelineError();
+    }
+    auto *controller = timeline->controller();
     if (!controller) {
         return makeNoTimelineError();
     }
@@ -323,14 +405,28 @@ QJsonObject TransitionHandler::handleCompositionList(const QJsonObject & /*param
     return QJsonObject{{QStringLiteral("result"), compositions}};
 }
 
-QJsonObject TransitionHandler::handleCompositionAdd(const QJsonObject &params)
+auto TransitionHandler::handleCompositionAdd(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
-    auto *controller = pCore->window()->getCurrentTimeline()->controller();
+    // Check window availability before accessing timeline
+    if (!pCore->window()) {
+        return makeWindowNotAvailableError();
+    }
+
+    auto *timeline = pCore->window()->getCurrentTimeline();
+    if (!timeline) {
+        return makeNoTimelineError();
+    }
+    auto *controller = timeline->controller();
     if (!controller) {
         return makeNoTimelineError();
     }
@@ -364,14 +460,28 @@ QJsonObject TransitionHandler::handleCompositionAdd(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("compositionId"), newCompoId}}}};
 }
 
-QJsonObject TransitionHandler::handleCompositionRemove(const QJsonObject &params)
+auto TransitionHandler::handleCompositionRemove(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
-    auto *controller = pCore->window()->getCurrentTimeline()->controller();
+    // Check window availability before accessing timeline
+    if (!pCore->window()) {
+        return makeWindowNotAvailableError();
+    }
+
+    auto *timeline = pCore->window()->getCurrentTimeline();
+    if (!timeline) {
+        return makeNoTimelineError();
+    }
+    auto *controller = timeline->controller();
     if (!controller) {
         return makeNoTimelineError();
     }
@@ -397,14 +507,28 @@ QJsonObject TransitionHandler::handleCompositionRemove(const QJsonObject &params
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("removed"), true}}}};
 }
 
-QJsonObject TransitionHandler::handleCompositionGetProperties(const QJsonObject &params)
+auto TransitionHandler::handleCompositionGetProperties(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
-    auto *controller = pCore->window()->getCurrentTimeline()->controller();
+    // Check window availability before accessing timeline
+    if (!pCore->window()) {
+        return makeWindowNotAvailableError();
+    }
+
+    auto *timeline = pCore->window()->getCurrentTimeline();
+    if (!timeline) {
+        return makeNoTimelineError();
+    }
+    auto *controller = timeline->controller();
     if (!controller) {
         return makeNoTimelineError();
     }
@@ -448,14 +572,28 @@ QJsonObject TransitionHandler::handleCompositionGetProperties(const QJsonObject 
     return QJsonObject{{QStringLiteral("result"), properties}};
 }
 
-QJsonObject TransitionHandler::handleCompositionSetProperty(const QJsonObject &params)
+auto TransitionHandler::handleCompositionSetProperty(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
-    auto *controller = pCore->window()->getCurrentTimeline()->controller();
+    // Check window availability before accessing timeline
+    if (!pCore->window()) {
+        return makeWindowNotAvailableError();
+    }
+
+    auto *timeline = pCore->window()->getCurrentTimeline();
+    if (!timeline) {
+        return makeNoTimelineError();
+    }
+    auto *controller = timeline->controller();
     if (!controller) {
         return makeNoTimelineError();
     }

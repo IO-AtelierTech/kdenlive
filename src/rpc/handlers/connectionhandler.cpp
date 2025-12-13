@@ -20,18 +20,18 @@ ConnectionHandler::ConnectionHandler(RpcNotifier *notifier, RpcDispatcher *dispa
 
 ConnectionHandler::~ConnectionHandler() = default;
 
-QString ConnectionHandler::prefix() const
+auto ConnectionHandler::prefix() const -> QString
 {
     return QStringLiteral("rpc");
 }
 
-QStringList ConnectionHandler::supportedMethods() const
+auto ConnectionHandler::supportedMethods() const -> QStringList
 {
     return QStringList{QStringLiteral("ping"), QStringLiteral("getVersion"), QStringLiteral("getCapabilities"), QStringLiteral("subscribe"),
                        QStringLiteral("unsubscribe")};
 }
 
-QJsonObject ConnectionHandler::handle(const QString &method, const QJsonObject &params)
+auto ConnectionHandler::handle(const QString &method, const QJsonObject &params) -> QJsonObject
 {
     if (method == QLatin1String("ping")) {
         return handlePing(params);
@@ -53,18 +53,18 @@ QJsonObject ConnectionHandler::handle(const QString &method, const QJsonObject &
                                                              {QStringLiteral("message"), QStringLiteral("Unknown method: rpc.%1").arg(method)}}}};
 }
 
-QJsonObject ConnectionHandler::handlePing(const QJsonObject & /*params*/)
+auto ConnectionHandler::handlePing(const QJsonObject & /*params*/) -> QJsonObject
 {
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("pong"), true}}}};
 }
 
-QJsonObject ConnectionHandler::handleGetVersion(const QJsonObject & /*params*/)
+auto ConnectionHandler::handleGetVersion(const QJsonObject & /*params*/) -> QJsonObject
 {
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("kdenlive"), QStringLiteral(KDENLIVE_VERSION)},
                                                               {QStringLiteral("rpc"), QString::fromLatin1(RPC_VERSION)}}}};
 }
 
-QJsonObject ConnectionHandler::handleGetCapabilities(const QJsonObject & /*params*/)
+auto ConnectionHandler::handleGetCapabilities(const QJsonObject & /*params*/) -> QJsonObject
 {
     QJsonArray methods;
     const QStringList allMethods = m_dispatcher->allMethods();
@@ -81,7 +81,7 @@ QJsonObject ConnectionHandler::handleGetCapabilities(const QJsonObject & /*param
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("methods"), methods}, {QStringLiteral("events"), events}}}};
 }
 
-QJsonObject ConnectionHandler::handleSubscribe(const QJsonObject &params)
+auto ConnectionHandler::handleSubscribe(const QJsonObject &params) -> QJsonObject
 {
     QStringList events;
 
@@ -116,7 +116,7 @@ QJsonObject ConnectionHandler::handleSubscribe(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("subscribed"), subscribed}}}};
 }
 
-QJsonObject ConnectionHandler::handleUnsubscribe(const QJsonObject &params)
+auto ConnectionHandler::handleUnsubscribe(const QJsonObject &params) -> QJsonObject
 {
     QStringList events;
 

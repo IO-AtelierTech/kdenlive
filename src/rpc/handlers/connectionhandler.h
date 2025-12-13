@@ -35,8 +35,8 @@ public:
     QString prefix() const override;
 
 private:
-    QJsonObject handlePing(const QJsonObject &params);
-    QJsonObject handleGetVersion(const QJsonObject &params);
+    static QJsonObject handlePing(const QJsonObject &params);
+    static QJsonObject handleGetVersion(const QJsonObject &params);
     QJsonObject handleGetCapabilities(const QJsonObject &params);
     QJsonObject handleSubscribe(const QJsonObject &params);
     QJsonObject handleUnsubscribe(const QJsonObject &params);

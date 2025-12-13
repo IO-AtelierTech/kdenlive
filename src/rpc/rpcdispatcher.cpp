@@ -43,7 +43,7 @@ void RpcDispatcher::unregisterHandler(const QString &prefix)
     }
 }
 
-QString RpcDispatcher::dispatch(const QString &json)
+auto RpcDispatcher::dispatch(const QString &json) -> QString
 {
     QJsonParseError parseError;
     QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8(), &parseError);
@@ -70,7 +70,7 @@ QString RpcDispatcher::dispatch(const QString &json)
             }
         }
         if (responses.isEmpty()) {
-            return QString();
+            return {};
         }
         return QString::fromUtf8(QJsonDocument(responses).toJson(QJsonDocument::Compact));
     } else {
@@ -80,7 +80,7 @@ QString RpcDispatcher::dispatch(const QString &json)
     return QString::fromUtf8(QJsonDocument(response).toJson(QJsonDocument::Compact));
 }
 
-QJsonObject RpcDispatcher::dispatchObject(const QJsonObject &request)
+auto RpcDispatcher::dispatchObject(const QJsonObject &request) -> QJsonObject
 {
     // Validate JSON-RPC version
     if (request.value(QStringLiteral("jsonrpc")).toString() != QLatin1String("2.0")) {
@@ -111,13 +111,13 @@ QJsonObject RpcDispatcher::dispatchObject(const QJsonObject &request)
 
     // Notifications don't get responses
     if (id.isNull() || id.isUndefined()) {
-        return QJsonObject();
+        return {};
     }
 
     return result;
 }
 
-QJsonObject RpcDispatcher::routeToHandler(const QString &method, const QJsonObject &params, const QJsonValue &id)
+auto RpcDispatcher::routeToHandler(const QString &method, const QJsonObject &params, const QJsonValue &id) -> QJsonObject
 {
     // Split method into prefix and name
     int dotIndex = method.indexOf(QLatin1Char('.'));
@@ -152,11 +152,11 @@ QJsonObject RpcDispatcher::routeToHandler(const QString &method, const QJsonObje
     return makeSuccessResponse(id, handlerResult.value(QStringLiteral("result")));
 }
 
-QStringList RpcDispatcher::allMethods() const
+auto RpcDispatcher::allMethods() const -> QStringList
 {
     QStringList methods;
     for (auto it = m_handlers.constBegin(); it != m_handlers.constEnd(); ++it) {
-        const QString prefix = it.key();
+        const QString &prefix = it.key();
         const QStringList handlerMethods = it.value()->supportedMethods();
         for (const QString &method : handlerMethods) {
             methods.append(prefix + QLatin1Char('.') + method);
@@ -165,7 +165,7 @@ QStringList RpcDispatcher::allMethods() const
     return methods;
 }
 
-IRpcHandler *RpcDispatcher::handler(const QString &prefix) const
+auto RpcDispatcher::handler(const QString &prefix) const -> IRpcHandler *
 {
     return m_handlers.value(prefix);
 }

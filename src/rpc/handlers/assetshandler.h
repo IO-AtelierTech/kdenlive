@@ -38,15 +38,15 @@ public:
     QString prefix() const override;
 
 private:
-    QJsonObject handleListCategories(const QJsonObject &params);
-    QJsonObject handleSearch(const QJsonObject &params);
-    QJsonObject handleGetEffectsByCategory(const QJsonObject &params);
-    QJsonObject handleGetFavorites(const QJsonObject &params);
-    QJsonObject handleAddFavorite(const QJsonObject &params);
-    QJsonObject handleRemoveFavorite(const QJsonObject &params);
-    QJsonObject handleGetPresets(const QJsonObject &params);
-    QJsonObject handleSavePreset(const QJsonObject &params);
-    QJsonObject handleDeletePreset(const QJsonObject &params);
+    static QJsonObject handleListCategories(const QJsonObject &params);
+    static QJsonObject handleSearch(const QJsonObject &params);
+    static QJsonObject handleGetEffectsByCategory(const QJsonObject &params);
+    static QJsonObject handleGetFavorites(const QJsonObject &params);
+    static QJsonObject handleAddFavorite(const QJsonObject &params);
+    static QJsonObject handleRemoveFavorite(const QJsonObject &params);
+    static QJsonObject handleGetPresets(const QJsonObject &params);
+    static QJsonObject handleSavePreset(const QJsonObject &params);
+    static QJsonObject handleDeletePreset(const QJsonObject &params);
 
     RpcNotifier *m_notifier;
 };

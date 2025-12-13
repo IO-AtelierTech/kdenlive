@@ -58,7 +58,8 @@ private:
     QJsonObject handleAddClipMarker(const QJsonObject &params);
     QJsonObject handleDeleteClipMarker(const QJsonObject &params);
 
-    QJsonObject makeProjectNotOpenError();
+    static QJsonObject makeProjectNotOpenError();
+    static QJsonObject makeApplicationClosingError();
 
     RpcNotifier *m_notifier;
 };

@@ -52,7 +52,7 @@ void RpcServer::setupHandlers()
     m_dispatcher->registerHandler(new RenderHandler(m_notifier.get(), this));
 }
 
-bool RpcServer::start(quint16 port, const QString &authToken)
+auto RpcServer::start(quint16 port, const QString &authToken) -> bool
 {
     // Check if RPC is enabled in settings
     if (!KdenliveSettings::rpcEnabled()) {
@@ -89,8 +89,12 @@ bool RpcServer::start(quint16 port, const QString &authToken)
 void RpcServer::stop()
 {
     if (m_client) {
-        m_client->close();
+        QWebSocket *oldClient = m_client;
         m_client = nullptr;
+        m_notifier->setClient(nullptr);
+        disconnect(oldClient, nullptr, this, nullptr);
+        oldClient->close();
+        oldClient->deleteLater();
     }
 
     if (m_server) {
@@ -101,27 +105,27 @@ void RpcServer::stop()
     }
 }
 
-bool RpcServer::isRunning() const
+auto RpcServer::isRunning() const -> bool
 {
     return m_server && m_server->isListening();
 }
 
-quint16 RpcServer::port() const
+auto RpcServer::port() const -> quint16
 {
     return m_server ? m_server->serverPort() : 0;
 }
 
-bool RpcServer::hasClient() const
+auto RpcServer::hasClient() const -> bool
 {
     return m_client != nullptr && m_client->isValid();
 }
 
-RpcDispatcher *RpcServer::dispatcher() const
+auto RpcServer::dispatcher() const -> RpcDispatcher *
 {
     return m_dispatcher.get();
 }
 
-RpcNotifier *RpcServer::notifier() const
+auto RpcServer::notifier() const -> RpcNotifier *
 {
     return m_notifier.get();
 }
@@ -136,8 +140,16 @@ void RpcServer::onNewConnection()
     // Single client model: disconnect existing client
     if (m_client) {
         qInfo() << "RpcServer: Disconnecting existing client for new connection";
-        m_client->close();
+        QWebSocket *oldClient = m_client;
         m_client = nullptr;
+
+        // Clear notifier reference first to prevent stale pointer access
+        m_notifier->setClient(nullptr);
+
+        // Now safely disconnect and cleanup the old socket
+        disconnect(oldClient, nullptr, this, nullptr);
+        oldClient->close();
+        oldClient->deleteLater();
     }
 
     m_client = socket;
@@ -157,13 +169,19 @@ void RpcServer::onNewConnection()
 
 void RpcServer::onClientDisconnected()
 {
-    if (m_client) {
+    auto *disconnectedSocket = qobject_cast<QWebSocket *>(sender());
+
+    // Only handle if it's our current client (not an old one being replaced)
+    if (m_client && m_client == disconnectedSocket) {
         qInfo() << "RpcServer: Client disconnected";
         m_client->deleteLater();
         m_client = nullptr;
         m_authenticated = m_authToken.isEmpty();
         m_notifier->setClient(nullptr);
         Q_EMIT clientDisconnected();
+    } else if (disconnectedSocket) {
+        // Old client being replaced - just clean it up
+        disconnectedSocket->deleteLater();
     }
 }
 
@@ -191,7 +209,7 @@ void RpcServer::onTextMessageReceived(const QString &message)
     }
 }
 
-bool RpcServer::authenticateClient(const QString &message)
+auto RpcServer::authenticateClient(const QString &message) -> bool
 {
     // Expected format: {"jsonrpc": "2.0", "method": "rpc.auth", "params": {"token": "..."}, "id": ...}
     QJsonDocument doc = QJsonDocument::fromJson(message.toUtf8());

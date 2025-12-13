@@ -26,14 +26,17 @@ constexpr int InvalidParams = -32602;  ///< Invalid method parameters
 constexpr int InternalError = -32603;  ///< Internal JSON-RPC error
 
 // Application-specific errors (-32099 to -32000)
-constexpr int ProjectNotOpen = -32001;   ///< No project is currently open
-constexpr int ClipNotFound = -32002;     ///< Referenced clip not found
-constexpr int TrackNotFound = -32003;    ///< Referenced track not found
-constexpr int EffectNotFound = -32004;   ///< Referenced effect not found
-constexpr int RenderInProgress = -32005; ///< Render job already running
-constexpr int InvalidPath = -32006;      ///< Invalid file path
-constexpr int OperationFailed = -32007;  ///< Generic operation failure
-constexpr int Unauthorized = -32008;     ///< Authentication required/failed
+constexpr int ProjectNotOpen = -32001;     ///< No project is currently open
+constexpr int ClipNotFound = -32002;       ///< Referenced clip not found
+constexpr int TrackNotFound = -32003;      ///< Referenced track not found
+constexpr int EffectNotFound = -32004;     ///< Referenced effect not found
+constexpr int RenderInProgress = -32005;   ///< Render job already running
+constexpr int InvalidPath = -32006;        ///< Invalid file path
+constexpr int OperationFailed = -32007;    ///< Generic operation failure
+constexpr int Unauthorized = -32008;       ///< Authentication required/failed
+constexpr int ApplicationClosing = -32009; ///< Application is shutting down
+constexpr int TimelineNotReady = -32010;   ///< Timeline not initialized or transitioning
+constexpr int WindowNotAvailable = -32011; ///< Main window not available
 } // namespace RpcError
 
 /**

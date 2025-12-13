@@ -40,8 +40,10 @@ private:
     QJsonObject handleGetProperties(const QJsonObject &params);
     QJsonObject handleSetProperty(const QJsonObject &params);
 
-    QJsonObject makeProjectNotOpenError();
-    QJsonObject makeNoTimelineError();
+    static QJsonObject makeProjectNotOpenError();
+    static QJsonObject makeNoTimelineError();
+    static QJsonObject makeApplicationClosingError();
+    static QJsonObject makeWindowNotAvailableError();
 
     RpcNotifier *m_notifier;
 };

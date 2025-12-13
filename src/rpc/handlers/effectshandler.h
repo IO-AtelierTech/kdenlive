@@ -44,7 +44,7 @@ public:
     QString prefix() const override;
 
 private:
-    QJsonObject handleListAvailable(const QJsonObject &params);
+    static QJsonObject handleListAvailable(const QJsonObject &params);
     QJsonObject handleGetInfo(const QJsonObject &params);
     QJsonObject handleAdd(const QJsonObject &params);
     QJsonObject handleRemove(const QJsonObject &params);
@@ -60,10 +60,11 @@ private:
     QJsonObject handleDeleteKeyframe(const QJsonObject &params);
     QJsonObject handleDeleteAllKeyframes(const QJsonObject &params);
 
-    QJsonObject makeProjectNotOpenError();
-    QJsonObject makeClipNotFoundError(int clipId);
-    QJsonObject makeEffectNotFoundError(const QString &effectId);
-    QJsonObject makeEffectIndexError(int effectIndex);
+    static QJsonObject makeProjectNotOpenError();
+    static QJsonObject makeApplicationClosingError();
+    static QJsonObject makeClipNotFoundError(int clipId);
+    static QJsonObject makeEffectNotFoundError(const QString &effectId);
+    static QJsonObject makeEffectIndexError(int effectIndex);
 
     RpcNotifier *m_notifier;
 };

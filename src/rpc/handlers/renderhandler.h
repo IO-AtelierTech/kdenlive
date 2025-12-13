@@ -39,18 +39,19 @@ public:
     QString prefix() const override;
 
 private:
-    QJsonObject handleGetPresets(const QJsonObject &params);
-    QJsonObject handleGetPresetInfo(const QJsonObject &params);
+    static QJsonObject handleGetPresets(const QJsonObject &params);
+    static QJsonObject handleGetPresetInfo(const QJsonObject &params);
     QJsonObject handleStart(const QJsonObject &params);
     QJsonObject handleStartWithGuides(const QJsonObject &params);
-    QJsonObject handleStop(const QJsonObject &params);
-    QJsonObject handleStopAll(const QJsonObject &params);
-    QJsonObject handleGetStatus(const QJsonObject &params);
-    QJsonObject handleGetJobs(const QJsonObject &params);
-    QJsonObject handleGetActiveJob(const QJsonObject &params);
-    QJsonObject handleSetOutput(const QJsonObject &params);
+    static QJsonObject handleStop(const QJsonObject &params);
+    static QJsonObject handleStopAll(const QJsonObject &params);
+    static QJsonObject handleGetStatus(const QJsonObject &params);
+    static QJsonObject handleGetJobs(const QJsonObject &params);
+    static QJsonObject handleGetActiveJob(const QJsonObject &params);
+    static QJsonObject handleSetOutput(const QJsonObject &params);
 
-    QJsonObject makeProjectNotOpenError();
+    static QJsonObject makeProjectNotOpenError();
+    static QJsonObject makeApplicationClosingError();
 
     RpcNotifier *m_notifier;
 };

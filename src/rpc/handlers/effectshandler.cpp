@@ -26,12 +26,12 @@ EffectsHandler::EffectsHandler(RpcNotifier *notifier, QObject *parent)
 
 EffectsHandler::~EffectsHandler() = default;
 
-QString EffectsHandler::prefix() const
+auto EffectsHandler::prefix() const -> QString
 {
     return QStringLiteral("effect");
 }
 
-QStringList EffectsHandler::supportedMethods() const
+auto EffectsHandler::supportedMethods() const -> QStringList
 {
     return QStringList{QStringLiteral("listAvailable"), QStringLiteral("getInfo"),        QStringLiteral("add"),
                        QStringLiteral("remove"),        QStringLiteral("getClipEffects"), QStringLiteral("getProperty"),
@@ -40,7 +40,7 @@ QStringList EffectsHandler::supportedMethods() const
                        QStringLiteral("setKeyframe"),   QStringLiteral("deleteKeyframe"), QStringLiteral("deleteAllKeyframes")};
 }
 
-QJsonObject EffectsHandler::handle(const QString &method, const QJsonObject &params)
+auto EffectsHandler::handle(const QString &method, const QJsonObject &params) -> QJsonObject
 {
     if (method == QLatin1String("listAvailable")) {
         return handleListAvailable(params);
@@ -92,31 +92,37 @@ QJsonObject EffectsHandler::handle(const QString &method, const QJsonObject &par
                                                              {QStringLiteral("message"), QStringLiteral("Unknown method: effect.%1").arg(method)}}}};
 }
 
-QJsonObject EffectsHandler::makeProjectNotOpenError()
+auto EffectsHandler::makeProjectNotOpenError() -> QJsonObject
 {
     return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::ProjectNotOpen},
                                                              {QStringLiteral("message"), QStringLiteral("No project is currently open")}}}};
 }
 
-QJsonObject EffectsHandler::makeClipNotFoundError(int clipId)
+auto EffectsHandler::makeApplicationClosingError() -> QJsonObject
+{
+    return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::ApplicationClosing},
+                                                             {QStringLiteral("message"), QStringLiteral("Application is shutting down")}}}};
+}
+
+auto EffectsHandler::makeClipNotFoundError(int clipId) -> QJsonObject
 {
     return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::ClipNotFound},
                                                              {QStringLiteral("message"), QStringLiteral("Clip not found: %1").arg(clipId)}}}};
 }
 
-QJsonObject EffectsHandler::makeEffectNotFoundError(const QString &effectId)
+auto EffectsHandler::makeEffectNotFoundError(const QString &effectId) -> QJsonObject
 {
     return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::EffectNotFound},
                                                              {QStringLiteral("message"), QStringLiteral("Effect not found: %1").arg(effectId)}}}};
 }
 
-QJsonObject EffectsHandler::makeEffectIndexError(int effectIndex)
+auto EffectsHandler::makeEffectIndexError(int effectIndex) -> QJsonObject
 {
     return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::EffectNotFound},
                                                              {QStringLiteral("message"), QStringLiteral("Invalid effect index: %1").arg(effectIndex)}}}};
 }
 
-QJsonObject EffectsHandler::handleListAvailable(const QJsonObject & /*params*/)
+auto EffectsHandler::handleListAvailable(const QJsonObject & /*params*/) -> QJsonObject
 {
     QJsonArray effects;
     auto effectNames = EffectsRepository::get()->getNames();
@@ -192,7 +198,7 @@ QJsonObject EffectsHandler::handleListAvailable(const QJsonObject & /*params*/)
     return QJsonObject{{QStringLiteral("result"), effects}};
 }
 
-QJsonObject EffectsHandler::handleGetInfo(const QJsonObject &params)
+auto EffectsHandler::handleGetInfo(const QJsonObject &params) -> QJsonObject
 {
     QString effectId = params.value(QStringLiteral("effectId")).toString();
     if (effectId.isEmpty()) {
@@ -237,10 +243,15 @@ QJsonObject EffectsHandler::handleGetInfo(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), result}};
 }
 
-QJsonObject EffectsHandler::handleAdd(const QJsonObject &params)
+auto EffectsHandler::handleAdd(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->currentDoc();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -292,10 +303,15 @@ QJsonObject EffectsHandler::handleAdd(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("effectIndex"), effectIndex}}}};
 }
 
-QJsonObject EffectsHandler::handleRemove(const QJsonObject &params)
+auto EffectsHandler::handleRemove(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->currentDoc();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -335,10 +351,15 @@ QJsonObject EffectsHandler::handleRemove(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("removed"), true}}}};
 }
 
-QJsonObject EffectsHandler::handleGetClipEffects(const QJsonObject &params)
+auto EffectsHandler::handleGetClipEffects(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->currentDoc();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -374,10 +395,15 @@ QJsonObject EffectsHandler::handleGetClipEffects(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), effects}};
 }
 
-QJsonObject EffectsHandler::handleGetProperty(const QJsonObject &params)
+auto EffectsHandler::handleGetProperty(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->currentDoc();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -414,10 +440,15 @@ QJsonObject EffectsHandler::handleGetProperty(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("property"), property}, {QStringLiteral("value"), value}}}};
 }
 
-QJsonObject EffectsHandler::handleSetProperty(const QJsonObject &params)
+auto EffectsHandler::handleSetProperty(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->currentDoc();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -455,10 +486,15 @@ QJsonObject EffectsHandler::handleSetProperty(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("property"), property}, {QStringLiteral("value"), value}}}};
 }
 
-QJsonObject EffectsHandler::handleEnable(const QJsonObject &params)
+auto EffectsHandler::handleEnable(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->currentDoc();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -494,10 +530,15 @@ QJsonObject EffectsHandler::handleEnable(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("enabled"), true}}}};
 }
 
-QJsonObject EffectsHandler::handleDisable(const QJsonObject &params)
+auto EffectsHandler::handleDisable(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->currentDoc();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -533,10 +574,15 @@ QJsonObject EffectsHandler::handleDisable(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("enabled"), false}}}};
 }
 
-QJsonObject EffectsHandler::handleReorder(const QJsonObject &params)
+auto EffectsHandler::handleReorder(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->currentDoc();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -575,10 +621,15 @@ QJsonObject EffectsHandler::handleReorder(const QJsonObject &params)
                         QJsonObject{{QStringLiteral("moved"), true}, {QStringLiteral("fromIndex"), fromIndex}, {QStringLiteral("toIndex"), toIndex}}}};
 }
 
-QJsonObject EffectsHandler::handleCopyToClips(const QJsonObject &params)
+auto EffectsHandler::handleCopyToClips(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->currentDoc();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -603,10 +654,14 @@ QJsonObject EffectsHandler::handleCopyToClips(const QJsonObject &params)
     int copiedCount = 0;
     for (const auto &targetIdVal : targetClipIds) {
         int targetId = targetIdVal.toInt(-1);
-        if (targetId < 0) continue;
+        if (targetId < 0) {
+            continue;
+        }
 
         auto targetStack = timeline->getClipEffectStack(targetId);
-        if (!targetStack) continue;
+        if (!targetStack) {
+            continue;
+        }
 
         if (targetStack->importEffects(sourceStack, PlaylistState::Disabled)) {
             copiedCount++;
@@ -616,10 +671,15 @@ QJsonObject EffectsHandler::handleCopyToClips(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("copiedToClips"), copiedCount}}}};
 }
 
-QJsonObject EffectsHandler::handleGetKeyframes(const QJsonObject &params)
+auto EffectsHandler::handleGetKeyframes(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->currentDoc();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -660,15 +720,15 @@ QJsonObject EffectsHandler::handleGetKeyframes(const QJsonObject &params)
     // Note: getKeyModel() returns the first keyframeable parameter's model
     // The 'property' parameter is kept for API consistency but all keyframes are returned
     Q_UNUSED(property)
-    auto kfModel = keyframes->getKeyModel();
+    auto *kfModel = keyframes->getKeyModel();
     if (kfModel) {
-        for (auto it = kfModel->begin(); it != kfModel->end(); ++it) {
+        for (auto &it : *kfModel) {
             QJsonObject kfObj;
-            kfObj[QStringLiteral("frame")] = it->first.frames(pCore->getCurrentFps());
-            kfObj[QStringLiteral("value")] = it->second.second.toString();
+            kfObj[QStringLiteral("frame")] = it.first.frames(pCore->getCurrentFps());
+            kfObj[QStringLiteral("value")] = it.second.second.toString();
 
             QString typeStr;
-            switch (it->second.first) {
+            switch (it.second.first) {
             case KeyframeType::Linear:
                 typeStr = QStringLiteral("linear");
                 break;
@@ -690,10 +750,15 @@ QJsonObject EffectsHandler::handleGetKeyframes(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), keyframeArray}};
 }
 
-QJsonObject EffectsHandler::handleSetKeyframe(const QJsonObject &params)
+auto EffectsHandler::handleSetKeyframe(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->currentDoc();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -753,10 +818,15 @@ QJsonObject EffectsHandler::handleSetKeyframe(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("success"), success}, {QStringLiteral("frame"), frame}}}};
 }
 
-QJsonObject EffectsHandler::handleDeleteKeyframe(const QJsonObject &params)
+auto EffectsHandler::handleDeleteKeyframe(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->currentDoc();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -801,10 +871,15 @@ QJsonObject EffectsHandler::handleDeleteKeyframe(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("success"), success}, {QStringLiteral("frame"), frame}}}};
 }
 
-QJsonObject EffectsHandler::handleDeleteAllKeyframes(const QJsonObject &params)
+auto EffectsHandler::handleDeleteAllKeyframes(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->currentDoc();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 

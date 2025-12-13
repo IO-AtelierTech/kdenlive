@@ -29,19 +29,19 @@ RenderHandler::RenderHandler(RpcNotifier *notifier, QObject *parent)
 
 RenderHandler::~RenderHandler() = default;
 
-QString RenderHandler::prefix() const
+auto RenderHandler::prefix() const -> QString
 {
     return QStringLiteral("render");
 }
 
-QStringList RenderHandler::supportedMethods() const
+auto RenderHandler::supportedMethods() const -> QStringList
 {
     return QStringList{QStringLiteral("getPresets"),   QStringLiteral("getPresetInfo"), QStringLiteral("start"),     QStringLiteral("startWithGuides"),
                        QStringLiteral("stop"),         QStringLiteral("stopAll"),       QStringLiteral("getStatus"), QStringLiteral("getJobs"),
                        QStringLiteral("getActiveJob"), QStringLiteral("setOutput")};
 }
 
-QJsonObject RenderHandler::handle(const QString &method, const QJsonObject &params)
+auto RenderHandler::handle(const QString &method, const QJsonObject &params) -> QJsonObject
 {
     if (method == QLatin1String("getPresets")) {
         return handleGetPresets(params);
@@ -78,13 +78,19 @@ QJsonObject RenderHandler::handle(const QString &method, const QJsonObject &para
                                                              {QStringLiteral("message"), QStringLiteral("Unknown method: render.%1").arg(method)}}}};
 }
 
-QJsonObject RenderHandler::makeProjectNotOpenError()
+auto RenderHandler::makeProjectNotOpenError() -> QJsonObject
 {
     return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::ProjectNotOpen},
                                                              {QStringLiteral("message"), QStringLiteral("No project is currently open")}}}};
 }
 
-QJsonObject RenderHandler::handleGetPresets(const QJsonObject & /*params*/)
+auto RenderHandler::makeApplicationClosingError() -> QJsonObject
+{
+    return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::ApplicationClosing},
+                                                             {QStringLiteral("message"), QStringLiteral("Application is shutting down")}}}};
+}
+
+auto RenderHandler::handleGetPresets(const QJsonObject & /*params*/) -> QJsonObject
 {
     QJsonArray presets;
 
@@ -106,7 +112,7 @@ QJsonObject RenderHandler::handleGetPresets(const QJsonObject & /*params*/)
     return QJsonObject{{QStringLiteral("result"), presets}};
 }
 
-QJsonObject RenderHandler::handleGetPresetInfo(const QJsonObject &params)
+auto RenderHandler::handleGetPresetInfo(const QJsonObject &params) -> QJsonObject
 {
     QString presetName = params.value(QStringLiteral("presetName")).toString();
 
@@ -171,10 +177,15 @@ QJsonObject RenderHandler::handleGetPresetInfo(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), result}};
 }
 
-QJsonObject RenderHandler::handleStart(const QJsonObject &params)
+auto RenderHandler::handleStart(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->currentDoc();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -226,10 +237,15 @@ QJsonObject RenderHandler::handleStart(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("jobId"), jobId}, {QStringLiteral("outputPath"), outputPath}}}};
 }
 
-QJsonObject RenderHandler::handleStartWithGuides(const QJsonObject &params)
+auto RenderHandler::handleStartWithGuides(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->currentDoc();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -281,7 +297,7 @@ QJsonObject RenderHandler::handleStartWithGuides(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("jobIds"), jobIds}}}};
 }
 
-QJsonObject RenderHandler::handleStop(const QJsonObject &params)
+auto RenderHandler::handleStop(const QJsonObject &params) -> QJsonObject
 {
     QString jobId = params.value(QStringLiteral("jobId")).toString();
 
@@ -302,7 +318,7 @@ QJsonObject RenderHandler::handleStop(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("stopped"), true}, {QStringLiteral("jobId"), jobId}}}};
 }
 
-QJsonObject RenderHandler::handleStopAll(const QJsonObject & /*params*/)
+auto RenderHandler::handleStopAll(const QJsonObject & /*params*/) -> QJsonObject
 {
     MainWindow *mw = pCore->window();
     if (!mw) {
@@ -318,7 +334,7 @@ QJsonObject RenderHandler::handleStopAll(const QJsonObject & /*params*/)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("stopped"), true}}}};
 }
 
-QJsonObject RenderHandler::handleGetStatus(const QJsonObject &params)
+auto RenderHandler::handleGetStatus(const QJsonObject &params) -> QJsonObject
 {
     QString jobId = params.value(QStringLiteral("jobId")).toString();
 
@@ -347,7 +363,7 @@ QJsonObject RenderHandler::handleGetStatus(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), result}};
 }
 
-QJsonObject RenderHandler::handleGetJobs(const QJsonObject & /*params*/)
+auto RenderHandler::handleGetJobs(const QJsonObject & /*params*/) -> QJsonObject
 {
     MainWindow *mw = pCore->window();
     if (!mw) {
@@ -372,7 +388,7 @@ QJsonObject RenderHandler::handleGetJobs(const QJsonObject & /*params*/)
     return QJsonObject{{QStringLiteral("result"), jobs}};
 }
 
-QJsonObject RenderHandler::handleGetActiveJob(const QJsonObject & /*params*/)
+auto RenderHandler::handleGetActiveJob(const QJsonObject & /*params*/) -> QJsonObject
 {
     MainWindow *mw = pCore->window();
     if (!mw) {
@@ -393,7 +409,7 @@ QJsonObject RenderHandler::handleGetActiveJob(const QJsonObject & /*params*/)
     return QJsonObject{{QStringLiteral("result"), result}};
 }
 
-QJsonObject RenderHandler::handleSetOutput(const QJsonObject &params)
+auto RenderHandler::handleSetOutput(const QJsonObject &params) -> QJsonObject
 {
     QString path = params.value(QStringLiteral("path")).toString();
 

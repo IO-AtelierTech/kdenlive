@@ -24,19 +24,19 @@ AssetsHandler::AssetsHandler(RpcNotifier *notifier, QObject *parent)
 
 AssetsHandler::~AssetsHandler() = default;
 
-QString AssetsHandler::prefix() const
+auto AssetsHandler::prefix() const -> QString
 {
     return QStringLiteral("asset");
 }
 
-QStringList AssetsHandler::supportedMethods() const
+auto AssetsHandler::supportedMethods() const -> QStringList
 {
     return QStringList{QStringLiteral("listCategories"), QStringLiteral("search"),      QStringLiteral("getEffectsByCategory"),
                        QStringLiteral("getFavorites"),   QStringLiteral("addFavorite"), QStringLiteral("removeFavorite"),
                        QStringLiteral("getPresets"),     QStringLiteral("savePreset"),  QStringLiteral("deletePreset")};
 }
 
-QJsonObject AssetsHandler::handle(const QString &method, const QJsonObject &params)
+auto AssetsHandler::handle(const QString &method, const QJsonObject &params) -> QJsonObject
 {
     if (method == QLatin1String("listCategories")) {
         return handleListCategories(params);
@@ -70,7 +70,7 @@ QJsonObject AssetsHandler::handle(const QString &method, const QJsonObject &para
                                                              {QStringLiteral("message"), QStringLiteral("Unknown method: asset.%1").arg(method)}}}};
 }
 
-QJsonObject AssetsHandler::handleListCategories(const QJsonObject & /*params*/)
+auto AssetsHandler::handleListCategories(const QJsonObject & /*params*/) -> QJsonObject
 {
     QJsonArray categories;
 
@@ -121,7 +121,7 @@ QJsonObject AssetsHandler::handleListCategories(const QJsonObject & /*params*/)
     return QJsonObject{{QStringLiteral("result"), categories}};
 }
 
-QJsonObject AssetsHandler::handleSearch(const QJsonObject &params)
+auto AssetsHandler::handleSearch(const QJsonObject &params) -> QJsonObject
 {
     QString query = params.value(QStringLiteral("query")).toString().toLower();
     QString typeFilter = params.value(QStringLiteral("type")).toString();
@@ -174,7 +174,7 @@ QJsonObject AssetsHandler::handleSearch(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), results}};
 }
 
-QJsonObject AssetsHandler::handleGetEffectsByCategory(const QJsonObject &params)
+auto AssetsHandler::handleGetEffectsByCategory(const QJsonObject &params) -> QJsonObject
 {
     QString categoryId = params.value(QStringLiteral("categoryId")).toString();
 
@@ -218,7 +218,7 @@ QJsonObject AssetsHandler::handleGetEffectsByCategory(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), effects}};
 }
 
-QJsonObject AssetsHandler::handleGetFavorites(const QJsonObject & /*params*/)
+auto AssetsHandler::handleGetFavorites(const QJsonObject & /*params*/) -> QJsonObject
 {
     QJsonArray favorites;
 
@@ -249,7 +249,7 @@ QJsonObject AssetsHandler::handleGetFavorites(const QJsonObject & /*params*/)
     return QJsonObject{{QStringLiteral("result"), favorites}};
 }
 
-QJsonObject AssetsHandler::handleAddFavorite(const QJsonObject &params)
+auto AssetsHandler::handleAddFavorite(const QJsonObject &params) -> QJsonObject
 {
     QString assetId = params.value(QStringLiteral("assetId")).toString();
     QString type = params.value(QStringLiteral("type")).toString(QStringLiteral("effect"));
@@ -287,7 +287,7 @@ QJsonObject AssetsHandler::handleAddFavorite(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("added"), true}, {QStringLiteral("assetId"), assetId}}}};
 }
 
-QJsonObject AssetsHandler::handleRemoveFavorite(const QJsonObject &params)
+auto AssetsHandler::handleRemoveFavorite(const QJsonObject &params) -> QJsonObject
 {
     QString assetId = params.value(QStringLiteral("assetId")).toString();
     QString type = params.value(QStringLiteral("type")).toString(QStringLiteral("effect"));
@@ -313,7 +313,7 @@ QJsonObject AssetsHandler::handleRemoveFavorite(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("removed"), true}, {QStringLiteral("assetId"), assetId}}}};
 }
 
-QJsonObject AssetsHandler::handleGetPresets(const QJsonObject &params)
+auto AssetsHandler::handleGetPresets(const QJsonObject &params) -> QJsonObject
 {
     QString effectId = params.value(QStringLiteral("effectId")).toString();
 
@@ -352,7 +352,7 @@ QJsonObject AssetsHandler::handleGetPresets(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), presets}};
 }
 
-QJsonObject AssetsHandler::handleSavePreset(const QJsonObject &params)
+auto AssetsHandler::handleSavePreset(const QJsonObject &params) -> QJsonObject
 {
     QString effectId = params.value(QStringLiteral("effectId")).toString();
     QString name = params.value(QStringLiteral("name")).toString();
@@ -413,7 +413,7 @@ QJsonObject AssetsHandler::handleSavePreset(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("saved"), true}, {QStringLiteral("name"), name}}}};
 }
 
-QJsonObject AssetsHandler::handleDeletePreset(const QJsonObject &params)
+auto AssetsHandler::handleDeletePreset(const QJsonObject &params) -> QJsonObject
 {
     QString effectId = params.value(QStringLiteral("effectId")).toString();
     QString presetName = params.value(QStringLiteral("presetName")).toString();

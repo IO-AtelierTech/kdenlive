@@ -11,6 +11,8 @@
 #include "doc/kdenlivedoc.h"
 #include "project/projectmanager.h"
 
+#include <QCoreApplication>
+#include <QFile>
 #include <QUrl>
 
 ProjectHandler::ProjectHandler(RpcNotifier *notifier, QObject *parent)
@@ -21,18 +23,18 @@ ProjectHandler::ProjectHandler(RpcNotifier *notifier, QObject *parent)
 
 ProjectHandler::~ProjectHandler() = default;
 
-QString ProjectHandler::prefix() const
+auto ProjectHandler::prefix() const -> QString
 {
     return QStringLiteral("project");
 }
 
-QStringList ProjectHandler::supportedMethods() const
+auto ProjectHandler::supportedMethods() const -> QStringList
 {
     return QStringList{QStringLiteral("getInfo"), QStringLiteral("open"), QStringLiteral("save"), QStringLiteral("close"),
                        QStringLiteral("new"),     QStringLiteral("undo"), QStringLiteral("redo")};
 }
 
-QJsonObject ProjectHandler::handle(const QString &method, const QJsonObject &params)
+auto ProjectHandler::handle(const QString &method, const QJsonObject &params) -> QJsonObject
 {
     if (method == QLatin1String("getInfo")) {
         return handleGetInfo(params);
@@ -60,16 +62,27 @@ QJsonObject ProjectHandler::handle(const QString &method, const QJsonObject &par
                                                              {QStringLiteral("message"), QStringLiteral("Unknown method: project.%1").arg(method)}}}};
 }
 
-QJsonObject ProjectHandler::makeProjectNotOpenError()
+auto ProjectHandler::makeProjectNotOpenError() -> QJsonObject
 {
     return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::ProjectNotOpen},
                                                              {QStringLiteral("message"), QStringLiteral("No project is currently open")}}}};
 }
 
-QJsonObject ProjectHandler::handleGetInfo(const QJsonObject & /*params*/)
+auto ProjectHandler::makeApplicationClosingError() -> QJsonObject
 {
+    return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::ApplicationClosing},
+                                                             {QStringLiteral("message"), QStringLiteral("Application is shutting down")}}}};
+}
+
+auto ProjectHandler::handleGetInfo(const QJsonObject & /*params*/) -> QJsonObject
+{
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -84,8 +97,13 @@ QJsonObject ProjectHandler::handleGetInfo(const QJsonObject & /*params*/)
     return QJsonObject{{QStringLiteral("result"), info}};
 }
 
-QJsonObject ProjectHandler::handleOpen(const QJsonObject &params)
+auto ProjectHandler::handleOpen(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     QString path = params.value(QStringLiteral("path")).toString();
     if (path.isEmpty()) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
@@ -98,8 +116,17 @@ QJsonObject ProjectHandler::handleOpen(const QJsonObject &params)
                                                                  {QStringLiteral("message"), QStringLiteral("Invalid path: %1").arg(path)}}}};
     }
 
+    // Check if the file exists before attempting to open
+    if (!QFile::exists(path)) {
+        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidPath},
+                                                                 {QStringLiteral("message"), QStringLiteral("File not found: %1").arg(path)}}}};
+    }
+
     // Open the project file
     pCore->projectManager()->doOpenFile(url, nullptr);
+
+    // Process pending events to let QML settle after project change
+    QCoreApplication::processEvents();
 
     // Notify if subscribed
     m_notifier->notifyProjectOpened(path);
@@ -107,16 +134,21 @@ QJsonObject ProjectHandler::handleOpen(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("opened"), true}, {QStringLiteral("path"), path}}}};
 }
 
-QJsonObject ProjectHandler::handleSave(const QJsonObject &params)
+auto ProjectHandler::handleSave(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
     QString path = params.value(QStringLiteral("path")).toString();
 
-    bool success;
+    bool success = false;
     if (path.isEmpty()) {
         // Save to current location
         success = pCore->projectManager()->saveFile();
@@ -136,16 +168,24 @@ QJsonObject ProjectHandler::handleSave(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("saved"), true}, {QStringLiteral("path"), savedPath}}}};
 }
 
-QJsonObject ProjectHandler::handleClose(const QJsonObject &params)
+auto ProjectHandler::handleClose(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
     bool saveChanges = params.value(QStringLiteral("saveChanges")).toBool(true);
 
     bool success = pCore->projectManager()->closeCurrentDocument(saveChanges);
+
+    // Process pending events to let QML settle after project change
+    QCoreApplication::processEvents();
 
     if (!success) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
@@ -157,8 +197,13 @@ QJsonObject ProjectHandler::handleClose(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("closed"), true}}}};
 }
 
-QJsonObject ProjectHandler::handleNew(const QJsonObject &params)
+auto ProjectHandler::handleNew(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     QString profile = params.value(QStringLiteral("profile")).toString();
 
     // Create new project (don't show project settings dialog)
@@ -167,6 +212,9 @@ QJsonObject ProjectHandler::handleNew(const QJsonObject &params)
     } else {
         pCore->projectManager()->newFile(profile, false);
     }
+
+    // Process pending events to let QML settle after project change
+    QCoreApplication::processEvents();
 
     KdenliveDoc *doc = pCore->projectManager()->current();
     if (!doc) {
@@ -180,8 +228,13 @@ QJsonObject ProjectHandler::handleNew(const QJsonObject &params)
                                                               {QStringLiteral("height"), doc->height()}}}};
 }
 
-QJsonObject ProjectHandler::handleUndo(const QJsonObject & /*params*/)
+auto ProjectHandler::handleUndo(const QJsonObject & /*params*/) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     auto undoStack = pCore->projectManager()->undoStack();
     if (!undoStack || !undoStack->canUndo()) {
         return QJsonObject{{QStringLiteral("error"),
@@ -194,8 +247,13 @@ QJsonObject ProjectHandler::handleUndo(const QJsonObject & /*params*/)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("undone"), true}, {QStringLiteral("action"), actionText}}}};
 }
 
-QJsonObject ProjectHandler::handleRedo(const QJsonObject & /*params*/)
+auto ProjectHandler::handleRedo(const QJsonObject & /*params*/) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     auto undoStack = pCore->projectManager()->undoStack();
     if (!undoStack || !undoStack->canRedo()) {
         return QJsonObject{{QStringLiteral("error"),

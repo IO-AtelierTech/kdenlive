@@ -28,12 +28,12 @@ BinHandler::BinHandler(RpcNotifier *notifier, QObject *parent)
 
 BinHandler::~BinHandler() = default;
 
-QString BinHandler::prefix() const
+auto BinHandler::prefix() const -> QString
 {
     return QStringLiteral("bin");
 }
 
-QStringList BinHandler::supportedMethods() const
+auto BinHandler::supportedMethods() const -> QStringList
 {
     return QStringList{QStringLiteral("listClips"),     QStringLiteral("listFolders"),     QStringLiteral("getClipInfo"), QStringLiteral("importClip"),
                        QStringLiteral("importClips"),   QStringLiteral("deleteClip"),      QStringLiteral("deleteClips"), QStringLiteral("createFolder"),
@@ -41,7 +41,7 @@ QStringList BinHandler::supportedMethods() const
                        QStringLiteral("addClipMarker"), QStringLiteral("deleteClipMarker")};
 }
 
-QJsonObject BinHandler::handle(const QString &method, const QJsonObject &params)
+auto BinHandler::handle(const QString &method, const QJsonObject &params) -> QJsonObject
 {
     if (method == QLatin1String("listClips")) {
         return handleListClips(params);
@@ -90,16 +90,27 @@ QJsonObject BinHandler::handle(const QString &method, const QJsonObject &params)
                                                              {QStringLiteral("message"), QStringLiteral("Unknown method: bin.%1").arg(method)}}}};
 }
 
-QJsonObject BinHandler::makeProjectNotOpenError()
+auto BinHandler::makeProjectNotOpenError() -> QJsonObject
 {
     return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::ProjectNotOpen},
                                                              {QStringLiteral("message"), QStringLiteral("No project is currently open")}}}};
 }
 
-QJsonObject BinHandler::handleListClips(const QJsonObject &params)
+auto BinHandler::makeApplicationClosingError() -> QJsonObject
 {
+    return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::ApplicationClosing},
+                                                             {QStringLiteral("message"), QStringLiteral("Application is shutting down")}}}};
+}
+
+auto BinHandler::handleListClips(const QJsonObject &params) -> QJsonObject
+{
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -143,10 +154,15 @@ QJsonObject BinHandler::handleListClips(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), clips}};
 }
 
-QJsonObject BinHandler::handleListFolders(const QJsonObject & /*params*/)
+auto BinHandler::handleListFolders(const QJsonObject & /*params*/) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -176,10 +192,15 @@ QJsonObject BinHandler::handleListFolders(const QJsonObject & /*params*/)
     return QJsonObject{{QStringLiteral("result"), folders}};
 }
 
-QJsonObject BinHandler::handleGetClipInfo(const QJsonObject &params)
+auto BinHandler::handleGetClipInfo(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -224,10 +245,15 @@ QJsonObject BinHandler::handleGetClipInfo(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), clipInfo}};
 }
 
-QJsonObject BinHandler::handleImportClip(const QJsonObject &params)
+auto BinHandler::handleImportClip(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -260,10 +286,15 @@ QJsonObject BinHandler::handleImportClip(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("clipId"), clipId}}}};
 }
 
-QJsonObject BinHandler::handleImportClips(const QJsonObject &params)
+auto BinHandler::handleImportClips(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -295,10 +326,15 @@ QJsonObject BinHandler::handleImportClips(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("imported"), urlList.count()}}}};
 }
 
-QJsonObject BinHandler::handleDeleteClip(const QJsonObject &params)
+auto BinHandler::handleDeleteClip(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -334,10 +370,15 @@ QJsonObject BinHandler::handleDeleteClip(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("deleted"), true}}}};
 }
 
-QJsonObject BinHandler::handleDeleteClips(const QJsonObject &params)
+auto BinHandler::handleDeleteClips(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -381,10 +422,15 @@ QJsonObject BinHandler::handleDeleteClips(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("deleted"), deleted}, {QStringLiteral("failed"), failed}}}};
 }
 
-QJsonObject BinHandler::handleCreateFolder(const QJsonObject &params)
+auto BinHandler::handleCreateFolder(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -420,10 +466,15 @@ QJsonObject BinHandler::handleCreateFolder(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("folderId"), folderId}}}};
 }
 
-QJsonObject BinHandler::handleDeleteFolder(const QJsonObject &params)
+auto BinHandler::handleDeleteFolder(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -459,10 +510,15 @@ QJsonObject BinHandler::handleDeleteFolder(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("deleted"), true}}}};
 }
 
-QJsonObject BinHandler::handleRenameItem(const QJsonObject &params)
+auto BinHandler::handleRenameItem(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -499,10 +555,15 @@ QJsonObject BinHandler::handleRenameItem(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("renamed"), true}}}};
 }
 
-QJsonObject BinHandler::handleMoveItem(const QJsonObject &params)
+auto BinHandler::handleMoveItem(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -537,10 +598,15 @@ QJsonObject BinHandler::handleMoveItem(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("moved"), true}}}};
 }
 
-QJsonObject BinHandler::handleGetClipMarkers(const QJsonObject &params)
+auto BinHandler::handleGetClipMarkers(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -580,10 +646,15 @@ QJsonObject BinHandler::handleGetClipMarkers(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), markers}};
 }
 
-QJsonObject BinHandler::handleAddClipMarker(const QJsonObject &params)
+auto BinHandler::handleAddClipMarker(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 
@@ -615,10 +686,15 @@ QJsonObject BinHandler::handleAddClipMarker(const QJsonObject &params)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("added"), true}}}};
 }
 
-QJsonObject BinHandler::handleDeleteClipMarker(const QJsonObject &params)
+auto BinHandler::handleDeleteClipMarker(const QJsonObject &params) -> QJsonObject
 {
+    // Check if application is shutting down
+    if (pCore->closing) {
+        return makeApplicationClosingError();
+    }
+
     KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
+    if (!doc || doc->closing) {
         return makeProjectNotOpenError();
     }
 

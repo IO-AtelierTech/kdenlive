@@ -24,7 +24,7 @@ void RpcNotifier::setClient(QWebSocket *client)
     }
 }
 
-bool RpcNotifier::subscribe(const QString &eventType)
+auto RpcNotifier::subscribe(const QString &eventType) -> bool
 {
     QMutexLocker locker(&m_mutex);
     if (m_subscriptions.contains(eventType)) {
@@ -34,19 +34,19 @@ bool RpcNotifier::subscribe(const QString &eventType)
     return true;
 }
 
-bool RpcNotifier::unsubscribe(const QString &eventType)
+auto RpcNotifier::unsubscribe(const QString &eventType) -> bool
 {
     QMutexLocker locker(&m_mutex);
     return m_subscriptions.remove(eventType);
 }
 
-bool RpcNotifier::isSubscribed(const QString &eventType) const
+auto RpcNotifier::isSubscribed(const QString &eventType) const -> bool
 {
     QMutexLocker locker(&m_mutex);
     return m_subscriptions.contains(eventType);
 }
 
-QSet<QString> RpcNotifier::subscriptions() const
+auto RpcNotifier::subscriptions() const -> QSet<QString>
 {
     QMutexLocker locker(&m_mutex);
     return m_subscriptions;
@@ -58,7 +58,7 @@ void RpcNotifier::clearSubscriptions()
     m_subscriptions.clear();
 }
 
-QStringList RpcNotifier::availableEventTypes()
+auto RpcNotifier::availableEventTypes() -> QStringList
 {
     return QStringList{QStringLiteral("project.opened"),   QStringLiteral("project.closed"),   QStringLiteral("project.saved"),
                        QStringLiteral("project.modified"), QStringLiteral("timeline.changed"), QStringLiteral("render.started"),

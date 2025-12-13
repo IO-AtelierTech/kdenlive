@@ -40,11 +40,12 @@ private:
     QJsonObject handleOpen(const QJsonObject &params);
     QJsonObject handleSave(const QJsonObject &params);
     QJsonObject handleClose(const QJsonObject &params);
-    QJsonObject handleNew(const QJsonObject &params);
-    QJsonObject handleUndo(const QJsonObject &params);
-    QJsonObject handleRedo(const QJsonObject &params);
+    static QJsonObject handleNew(const QJsonObject &params);
+    static QJsonObject handleUndo(const QJsonObject &params);
+    static QJsonObject handleRedo(const QJsonObject &params);
 
-    QJsonObject makeProjectNotOpenError();
+    static QJsonObject makeProjectNotOpenError();
+    static QJsonObject makeApplicationClosingError();
 
     RpcNotifier *m_notifier;
 };

@@ -44,7 +44,7 @@ public:
 
 private:
     // Transition methods
-    QJsonObject handleTransitionList(const QJsonObject &params);
+    static QJsonObject handleTransitionList(const QJsonObject &params);
     QJsonObject handleTransitionAdd(const QJsonObject &params);
     QJsonObject handleTransitionRemove(const QJsonObject &params);
     QJsonObject handleTransitionGetProperties(const QJsonObject &params);
@@ -57,8 +57,10 @@ private:
     QJsonObject handleCompositionGetProperties(const QJsonObject &params);
     QJsonObject handleCompositionSetProperty(const QJsonObject &params);
 
-    QJsonObject makeProjectNotOpenError();
-    QJsonObject makeNoTimelineError();
+    static QJsonObject makeProjectNotOpenError();
+    static QJsonObject makeNoTimelineError();
+    static QJsonObject makeApplicationClosingError();
+    static QJsonObject makeWindowNotAvailableError();
 
     RpcNotifier *m_notifier;
     bool m_isTransitionPrefix; // Set to true when handling transition.*, false for composition.*

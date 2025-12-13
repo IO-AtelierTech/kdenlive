@@ -64,8 +64,10 @@ private:
     QJsonObject handleGetSelection(const QJsonObject &params);
     QJsonObject handleSetSelection(const QJsonObject &params);
 
-    QJsonObject makeProjectNotOpenError();
-    QJsonObject makeNoTimelineError();
+    static QJsonObject makeProjectNotOpenError();
+    static QJsonObject makeNoTimelineError();
+    static QJsonObject makeApplicationClosingError();
+    static QJsonObject makeWindowNotAvailableError();
 
     RpcNotifier *m_notifier;
 };
