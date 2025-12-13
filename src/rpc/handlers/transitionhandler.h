@@ -45,17 +45,17 @@ public:
 private:
     // Transition methods
     static QJsonObject handleTransitionList(const QJsonObject &params);
-    QJsonObject handleTransitionAdd(const QJsonObject &params);
-    QJsonObject handleTransitionRemove(const QJsonObject &params);
-    QJsonObject handleTransitionGetProperties(const QJsonObject &params);
-    QJsonObject handleTransitionSetProperty(const QJsonObject &params);
+    static QJsonObject handleTransitionAdd(const QJsonObject &params);
+    static QJsonObject handleTransitionRemove(const QJsonObject &params);
+    static QJsonObject handleTransitionGetProperties(const QJsonObject &params);
+    static QJsonObject handleTransitionSetProperty(const QJsonObject &params);
 
     // Composition methods
-    QJsonObject handleCompositionList(const QJsonObject &params);
-    QJsonObject handleCompositionAdd(const QJsonObject &params);
-    QJsonObject handleCompositionRemove(const QJsonObject &params);
-    QJsonObject handleCompositionGetProperties(const QJsonObject &params);
-    QJsonObject handleCompositionSetProperty(const QJsonObject &params);
+    static QJsonObject handleCompositionList(const QJsonObject &params);
+    static QJsonObject handleCompositionAdd(const QJsonObject &params);
+    static QJsonObject handleCompositionRemove(const QJsonObject &params);
+    static QJsonObject handleCompositionGetProperties(const QJsonObject &params);
+    static QJsonObject handleCompositionSetProperty(const QJsonObject &params);
 
     static QJsonObject makeProjectNotOpenError();
     static QJsonObject makeNoTimelineError();

@@ -46,23 +46,23 @@ public:
     QString prefix() const override;
 
 private:
-    QJsonObject handleGetInfo(const QJsonObject &params);
-    QJsonObject handleGetTracks(const QJsonObject &params);
-    QJsonObject handleGetClips(const QJsonObject &params);
-    QJsonObject handleGetClip(const QJsonObject &params);
-    QJsonObject handleInsertClip(const QJsonObject &params);
-    QJsonObject handleMoveClip(const QJsonObject &params);
-    QJsonObject handleDeleteClip(const QJsonObject &params);
-    QJsonObject handleDeleteClips(const QJsonObject &params);
-    QJsonObject handleResizeClip(const QJsonObject &params);
-    QJsonObject handleSplitClip(const QJsonObject &params);
-    QJsonObject handleSeek(const QJsonObject &params);
-    QJsonObject handleGetPosition(const QJsonObject &params);
-    QJsonObject handleAddTrack(const QJsonObject &params);
-    QJsonObject handleDeleteTrack(const QJsonObject &params);
-    QJsonObject handleSetTrackProperty(const QJsonObject &params);
-    QJsonObject handleGetSelection(const QJsonObject &params);
-    QJsonObject handleSetSelection(const QJsonObject &params);
+    static QJsonObject handleGetInfo(const QJsonObject &params);
+    static QJsonObject handleGetTracks(const QJsonObject &params);
+    static QJsonObject handleGetClips(const QJsonObject &params);
+    static QJsonObject handleGetClip(const QJsonObject &params);
+    static QJsonObject handleInsertClip(const QJsonObject &params);
+    static QJsonObject handleMoveClip(const QJsonObject &params);
+    static QJsonObject handleDeleteClip(const QJsonObject &params);
+    static QJsonObject handleDeleteClips(const QJsonObject &params);
+    static QJsonObject handleResizeClip(const QJsonObject &params);
+    static QJsonObject handleSplitClip(const QJsonObject &params);
+    static QJsonObject handleSeek(const QJsonObject &params);
+    static QJsonObject handleGetPosition(const QJsonObject &params);
+    static QJsonObject handleAddTrack(const QJsonObject &params);
+    static QJsonObject handleDeleteTrack(const QJsonObject &params);
+    static QJsonObject handleSetTrackProperty(const QJsonObject &params);
+    static QJsonObject handleGetSelection(const QJsonObject &params);
+    static QJsonObject handleSetSelection(const QJsonObject &params);
 
     static QJsonObject makeProjectNotOpenError();
     static QJsonObject makeNoTimelineError();

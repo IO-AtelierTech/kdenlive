@@ -45,20 +45,20 @@ public:
 
 private:
     static QJsonObject handleListAvailable(const QJsonObject &params);
-    QJsonObject handleGetInfo(const QJsonObject &params);
-    QJsonObject handleAdd(const QJsonObject &params);
-    QJsonObject handleRemove(const QJsonObject &params);
-    QJsonObject handleGetClipEffects(const QJsonObject &params);
-    QJsonObject handleGetProperty(const QJsonObject &params);
-    QJsonObject handleSetProperty(const QJsonObject &params);
-    QJsonObject handleEnable(const QJsonObject &params);
-    QJsonObject handleDisable(const QJsonObject &params);
-    QJsonObject handleReorder(const QJsonObject &params);
-    QJsonObject handleCopyToClips(const QJsonObject &params);
-    QJsonObject handleGetKeyframes(const QJsonObject &params);
-    QJsonObject handleSetKeyframe(const QJsonObject &params);
-    QJsonObject handleDeleteKeyframe(const QJsonObject &params);
-    QJsonObject handleDeleteAllKeyframes(const QJsonObject &params);
+    static QJsonObject handleGetInfo(const QJsonObject &params);
+    static QJsonObject handleAdd(const QJsonObject &params);
+    static QJsonObject handleRemove(const QJsonObject &params);
+    static QJsonObject handleGetClipEffects(const QJsonObject &params);
+    static QJsonObject handleGetProperty(const QJsonObject &params);
+    static QJsonObject handleSetProperty(const QJsonObject &params);
+    static QJsonObject handleEnable(const QJsonObject &params);
+    static QJsonObject handleDisable(const QJsonObject &params);
+    static QJsonObject handleReorder(const QJsonObject &params);
+    static QJsonObject handleCopyToClips(const QJsonObject &params);
+    static QJsonObject handleGetKeyframes(const QJsonObject &params);
+    static QJsonObject handleSetKeyframe(const QJsonObject &params);
+    static QJsonObject handleDeleteKeyframe(const QJsonObject &params);
+    static QJsonObject handleDeleteAllKeyframes(const QJsonObject &params);
 
     static QJsonObject makeProjectNotOpenError();
     static QJsonObject makeApplicationClosingError();

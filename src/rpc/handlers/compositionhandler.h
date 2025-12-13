@@ -34,11 +34,11 @@ public:
     QString prefix() const override;
 
 private:
-    QJsonObject handleList(const QJsonObject &params);
-    QJsonObject handleAdd(const QJsonObject &params);
-    QJsonObject handleRemove(const QJsonObject &params);
-    QJsonObject handleGetProperties(const QJsonObject &params);
-    QJsonObject handleSetProperty(const QJsonObject &params);
+    static QJsonObject handleList(const QJsonObject &params);
+    static QJsonObject handleAdd(const QJsonObject &params);
+    static QJsonObject handleRemove(const QJsonObject &params);
+    static QJsonObject handleGetProperties(const QJsonObject &params);
+    static QJsonObject handleSetProperty(const QJsonObject &params);
 
     static QJsonObject makeProjectNotOpenError();
     static QJsonObject makeNoTimelineError();

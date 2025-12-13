@@ -18,6 +18,7 @@
 #include "undohelper.hpp"
 
 #include <QJsonArray>
+#include <QTimer>
 #include <QUrl>
 
 BinHandler::BinHandler(RpcNotifier *notifier, QObject *parent)
@@ -275,15 +276,14 @@ auto BinHandler::handleImportClip(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Invalid URL: %1").arg(urlStr)}}}};
     }
 
-    // Import the clip
-    const QString clipId = pCore->bin()->slotAddClipToProject(url);
+    // Disable profile check dialog for RPC imports
+    pCore->bin()->shouldCheckProfile = false;
 
-    if (clipId.isEmpty()) {
-        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
-                                                                 {QStringLiteral("message"), QStringLiteral("Failed to import clip")}}}};
-    }
+    // Defer the import to avoid blocking and potential dialogs
+    QTimer::singleShot(100, [url]() { pCore->bin()->slotAddClipToProject(url); });
 
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("clipId"), clipId}}}};
+    // Return immediately - client should poll bin.listClips or wait for notification
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("importing"), true}, {QStringLiteral("url"), urlStr}}}};
 }
 
 auto BinHandler::handleImportClips(const QJsonObject &params) -> QJsonObject
@@ -320,10 +320,16 @@ auto BinHandler::handleImportClips(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("No valid URLs provided")}}}};
     }
 
-    // Import clips
-    pCore->bin()->droppedUrls(urlList, folderId);
+    int count = urlList.count();
 
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("imported"), urlList.count()}}}};
+    // Disable profile check dialog for RPC imports
+    pCore->bin()->shouldCheckProfile = false;
+
+    // Defer the import to avoid blocking and potential dialogs
+    QTimer::singleShot(100, [urlList, folderId]() { pCore->bin()->droppedUrls(urlList, folderId); });
+
+    // Return immediately - client should poll bin.listClips or wait for notification
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("importing"), count}}}};
 }
 
 auto BinHandler::handleDeleteClip(const QJsonObject &params) -> QJsonObject

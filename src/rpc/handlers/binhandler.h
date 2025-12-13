@@ -43,20 +43,20 @@ public:
     QString prefix() const override;
 
 private:
-    QJsonObject handleListClips(const QJsonObject &params);
-    QJsonObject handleListFolders(const QJsonObject &params);
-    QJsonObject handleGetClipInfo(const QJsonObject &params);
-    QJsonObject handleImportClip(const QJsonObject &params);
-    QJsonObject handleImportClips(const QJsonObject &params);
-    QJsonObject handleDeleteClip(const QJsonObject &params);
-    QJsonObject handleDeleteClips(const QJsonObject &params);
-    QJsonObject handleCreateFolder(const QJsonObject &params);
-    QJsonObject handleDeleteFolder(const QJsonObject &params);
-    QJsonObject handleRenameItem(const QJsonObject &params);
-    QJsonObject handleMoveItem(const QJsonObject &params);
-    QJsonObject handleGetClipMarkers(const QJsonObject &params);
-    QJsonObject handleAddClipMarker(const QJsonObject &params);
-    QJsonObject handleDeleteClipMarker(const QJsonObject &params);
+    static QJsonObject handleListClips(const QJsonObject &params);
+    static QJsonObject handleListFolders(const QJsonObject &params);
+    static QJsonObject handleGetClipInfo(const QJsonObject &params);
+    static QJsonObject handleImportClip(const QJsonObject &params);
+    static QJsonObject handleImportClips(const QJsonObject &params);
+    static QJsonObject handleDeleteClip(const QJsonObject &params);
+    static QJsonObject handleDeleteClips(const QJsonObject &params);
+    static QJsonObject handleCreateFolder(const QJsonObject &params);
+    static QJsonObject handleDeleteFolder(const QJsonObject &params);
+    static QJsonObject handleRenameItem(const QJsonObject &params);
+    static QJsonObject handleMoveItem(const QJsonObject &params);
+    static QJsonObject handleGetClipMarkers(const QJsonObject &params);
+    static QJsonObject handleAddClipMarker(const QJsonObject &params);
+    static QJsonObject handleDeleteClipMarker(const QJsonObject &params);
 
     static QJsonObject makeProjectNotOpenError();
     static QJsonObject makeApplicationClosingError();
