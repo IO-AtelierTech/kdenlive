@@ -42,13 +42,11 @@ jobs:
 
           - name: linux-x86_64
             target: linux-64-gcc
-            os: ubuntu-latest
-            # KDE's Craft AppImage build container
-            container: kdeorg/ci-suse-qt68:latest
+            os: ubuntu-24.04
+            # Run directly on runner - Craft handles dependencies
 
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container }}
 
     env:
       CRAFT_TARGET: ${{ matrix.target }}
@@ -64,10 +62,9 @@ jobs:
           fetch-depth: 0          # Full history for version detection
 
       # -----------------------------------------------------------------------
-      # Setup Python (Windows only - Linux container has it)
+      # Setup Python
       # -----------------------------------------------------------------------
       - name: Setup Python
-        if: runner.os == 'Windows'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
