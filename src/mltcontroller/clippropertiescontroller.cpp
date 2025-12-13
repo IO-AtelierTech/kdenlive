@@ -403,7 +403,8 @@ QHBoxLayout *ClipPropertiesController::proxyProperty(const QString &label, const
     } else {
         pbox->setCheckState(Qt::Unchecked);
     }
-    pbox->setEnabled(pCore->projectManager()->current()->useProxy());
+    auto *doc = pCore->currentDoc();
+    pbox->setEnabled(doc && doc->useProxy());
 #if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
     connect(pbox, &QCheckBox::checkStateChanged, this, [this, pbox](Qt::CheckState state) {
 #else
@@ -520,8 +521,11 @@ QHBoxLayout *ClipPropertiesController::timecodeProperty(const QString &label, co
 
     int propertyValue = 0;
     if (propertyName.startsWith(QLatin1String("kdenlive:sequenceproperties."))) {
-        const QUuid uuid(m_properties->get("kdenlive:uuid"));
-        propertyValue = pCore->currentDoc()->getSequenceProperty(uuid, propertyName).toInt();
+        auto *doc = pCore->currentDoc();
+        if (doc) {
+            const QUuid uuid(m_properties->get("kdenlive:uuid"));
+            propertyValue = doc->getSequenceProperty(uuid, propertyName).toInt();
+        }
     } else {
         propertyValue = m_properties->get_int(propertyName.toUtf8().constData());
     }
@@ -1219,8 +1223,12 @@ void ClipPropertiesController::slotReloadProperties()
         QList<QStringList> propertyMap;
         propertyMap.append({i18n("Tracks:"), QString::number(tracks)});
         fillProperties();
-        const QUuid uuid(m_properties->get("kdenlive:uuid"));
-        int timecodeOffset = pCore->currentDoc()->getSequenceProperty(uuid, "kdenlive:sequenceproperties.timecodeOffset").toInt();
+        int timecodeOffset = 0;
+        auto *doc = pCore->currentDoc();
+        if (doc) {
+            const QUuid uuid(m_properties->get("kdenlive:uuid"));
+            timecodeOffset = doc->getSequenceProperty(uuid, "kdenlive:sequenceproperties.timecodeOffset").toInt();
+        }
         m_originalProperties.insert(QStringLiteral("kdenlive:sequenceproperties.timecodeOffset"), QString::number(timecodeOffset));
         Q_EMIT timecodeModified(timecodeOffset);
         break;

@@ -3618,6 +3618,11 @@ void Bin::showClipProperties(const std::shared_ptr<ProjectClip> &clip, bool forc
     if (m_propertiesPanel == nullptr) {
         return;
     }
+    // Don't show properties if document is closing or null
+    auto *doc = pCore->currentDoc();
+    if (!doc || doc->closing) {
+        return;
+    }
     if ((clip == nullptr) || !clip->statusReady() || clip->itemType() == AbstractProjectItem::FolderItem) {
         QList<ClipPropertiesController *> children = m_propertiesPanel->findChildren<ClipPropertiesController *>();
         while (!children.isEmpty()) {
