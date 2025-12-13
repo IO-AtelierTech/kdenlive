@@ -801,11 +801,15 @@ void TimelineItemModel::buildTrackCompositing(bool rebuild)
     if (m_closing) {
         return;
     }
+    auto *doc = pCore->currentDoc();
+    if (!doc) {
+        return;
+    }
     QScopedPointer<Mlt::Field> field(m_tractor->field());
     QScopedPointer<Mlt::Service> service(m_tractor->field());
     field->block();
     QString composite;
-    if (pCore->currentDoc()->getSequenceProperty(m_uuid, QStringLiteral("compositing"), QStringLiteral("1")).toInt() > 0) {
+    if (doc->getSequenceProperty(m_uuid, QStringLiteral("compositing"), QStringLiteral("1")).toInt() > 0) {
         composite = TransitionsRepository::get()->getCompositingTransition();
         if (composite.isEmpty()) {
             pCore->displayMessage(i18n("Could not setup track compositing, check your install"), MessageType::ErrorMessage);
@@ -885,6 +889,10 @@ void TimelineItemModel::_resetView()
 
 void TimelineItemModel::passSequenceProperties(const QMap<QString, QString> baseProperties)
 {
+    auto *doc = pCore->currentDoc();
+    if (!doc) {
+        return;
+    }
     QMapIterator<QString, QString> i(baseProperties);
     while (i.hasNext()) {
         i.next();
@@ -892,7 +900,7 @@ void TimelineItemModel::passSequenceProperties(const QMap<QString, QString> base
     }
     // Store groups data
     tractor()->set("kdenlive:sequenceproperties.groups", groupsData().toUtf8().constData());
-    tractor()->set("kdenlive:sequenceproperties.documentuuid", pCore->currentDoc()->uuid().toString().toUtf8().constData());
+    tractor()->set("kdenlive:sequenceproperties.documentuuid", doc->uuid().toString().toUtf8().constData());
     // Save timeline guides
     const QString guidesData = getGuideModel()->toJson();
     tractor()->set("kdenlive:sequenceproperties.guides", guidesData.toUtf8().constData());

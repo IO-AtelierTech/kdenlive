@@ -71,14 +71,15 @@ TimelineTabs::~TimelineTabs()
 void TimelineTabs::updateWindowTitle()
 {
     // Show current timeline name in Window title if we have multiple sequences but only one opened
-    if (m_activeTimeline == nullptr || pCore->currentDoc()->closing) {
+    auto *doc = pCore->currentDoc();
+    if (m_activeTimeline == nullptr || !doc || doc->closing) {
         return;
     }
     if (count() == 1 && pCore->projectItemModel()->sequenceCount() > 1) {
-        pCore->window()->setWindowTitle(pCore->currentDoc()->description(KLocalizedString::removeAcceleratorMarker(tabText(0))));
+        pCore->window()->setWindowTitle(doc->description(KLocalizedString::removeAcceleratorMarker(tabText(0))));
         m_activeTimeline->model()->updateVisibleSequenceName(tabText(0));
     } else {
-        pCore->window()->setWindowTitle(pCore->currentDoc()->description());
+        pCore->window()->setWindowTitle(doc->description());
         m_activeTimeline->model()->updateVisibleSequenceName(QString());
     }
 }
@@ -153,11 +154,12 @@ void TimelineTabs::connectCurrent(int ix)
 void TimelineTabs::doConnectCurrent(int ix, bool openInMonitor)
 {
     QMutexLocker lk(&m_lock);
+    auto *doc = pCore->currentDoc();
     QUuid previousTab = QUuid();
     if (m_activeTimeline && m_activeTimeline->model()) {
         previousTab = m_activeTimeline->getUuid();
         pCore->window()->disableMulticam();
-        if (openInMonitor && !pCore->currentDoc()->loading) {
+        if (openInMonitor && doc && !doc->loading) {
             if (pCore->isMediaCapturing()) {
                 pCore->switchCapture();
             } else if (pCore->isMediaMonitoring()) {
@@ -187,7 +189,7 @@ void TimelineTabs::doConnectCurrent(int ix, bool openInMonitor)
     } else {
         qDebug() << "==== NO PREVIOUS TIMELINE";
     }
-    if (ix < 0 || ix >= count() || pCore->currentDoc()->closing) {
+    if (ix < 0 || ix >= count() || !doc || doc->closing) {
         m_activeTimeline = nullptr;
         qDebug() << "==== ABORTING NO TIMELINE AVAILABLE";
         return;
@@ -269,9 +271,10 @@ TimelineWidget *TimelineTabs::getCurrentTimeline() const
 void TimelineTabs::closeTimelineTab(const QUuid uuid)
 {
     QMutexLocker lk(&m_lock);
+    auto *doc = pCore->currentDoc();
     int currentCount = count();
     disconnect(this, &TimelineTabs::currentChanged, this, &TimelineTabs::connectCurrent);
-    bool closing = pCore->currentDoc()->closing;
+    bool closing = doc ? doc->closing : true;
     for (int i = 0; i < currentCount; i++) {
         TimelineWidget *timeline = static_cast<TimelineWidget *>(widget(i));
         if (uuid == timeline->getUuid()) {
@@ -302,7 +305,11 @@ void TimelineTabs::closeTimelineTab(const QUuid uuid)
 
 void TimelineTabs::connectTimeline(TimelineWidget *timeline)
 {
-    int position = pCore->currentDoc()->getSequenceProperty(timeline->getUuid(), QStringLiteral("position"), QString::number(0)).toInt();
+    auto *doc = pCore->currentDoc();
+    if (!doc) {
+        return;
+    }
+    int position = doc->getSequenceProperty(timeline->getUuid(), QStringLiteral("position"), QString::number(0)).toInt();
     pCore->monitorManager()->projectMonitor()->getControllerProxy()->setCursorPosition(position);
     connect(timeline, &TimelineWidget::focusProjectMonitor, pCore->monitorManager(), &MonitorManager::focusProjectMonitor, Qt::DirectConnection);
     connect(this, &TimelineTabs::changeZoom, timeline, &TimelineWidget::slotChangeZoom);

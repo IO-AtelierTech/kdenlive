@@ -360,8 +360,12 @@ void TimelineWidget::showTargetMenu(int tid)
 
 void TimelineWidget::showRulerMenu()
 {
+    auto *doc = pCore->currentDoc();
+    if (!doc) {
+        return;
+    }
     m_guideMenu->clear();
-    const QList<CommentedTime> guides = pCore->currentDoc()->getGuideModel(m_uuid)->getAllMarkers();
+    const QList<CommentedTime> guides = doc->getGuideModel(m_uuid)->getAllMarkers();
     m_editGuideAcion->setEnabled(false);
     double fps = pCore->getCurrentFps();
     int currentPos = rootObject()->property("consumerPosition").toInt();
@@ -379,8 +383,12 @@ void TimelineWidget::showRulerMenu()
 
 void TimelineWidget::showTimelineMenu()
 {
+    auto *doc = pCore->currentDoc();
+    if (!doc) {
+        return;
+    }
     m_guideMenu->clear();
-    const QList<CommentedTime> guides = pCore->currentDoc()->getGuideModel(m_uuid)->getAllMarkers();
+    const QList<CommentedTime> guides = doc->getGuideModel(m_uuid)->getAllMarkers();
     m_editGuideAcion->setEnabled(false);
     double fps = pCore->getCurrentFps();
     int currentPos = rootObject()->property("consumerPosition").toInt();
