@@ -353,7 +353,6 @@ QJsonObject TransitionHandler::handleCompositionAdd(const QJsonObject &params)
     }
 
     QString compositionId = params.value(QStringLiteral("compositionId")).toString(QStringLiteral("composite"));
-    int duration = params.value(QStringLiteral("duration")).toInt(static_cast<int>(pCore->getCurrentFps())); // Default to 1 second
 
     int newCompoId = controller->insertComposition(trackId, position, compositionId, true);
 
@@ -482,7 +481,6 @@ QJsonObject TransitionHandler::handleCompositionSetProperty(const QJsonObject &p
 
     if (property == QLatin1String("aTrack")) {
         int aTrack = value.toInt(-1);
-        auto trackInfo = controller->getCompositionATrack(compositionId);
         controller->setCompositionATrack(compositionId, aTrack);
         return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("set"), true}}}};
     }

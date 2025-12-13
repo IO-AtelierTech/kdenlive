@@ -473,7 +473,6 @@ QJsonObject TimelineHandler::handleResizeClip(const QJsonObject &params)
     auto currentInOut = model->getClipInOut(clipId);
     int currentIn = currentInOut.first;
     int currentOut = currentInOut.second;
-    int currentDuration = currentOut - currentIn + 1;
 
     // Check for new in/out values
     bool hasIn = params.contains(QStringLiteral("in"));
