@@ -13,6 +13,7 @@
 
 #include <QCoreApplication>
 #include <QFile>
+#include <QTimer>
 #include <QUrl>
 
 ProjectHandler::ProjectHandler(RpcNotifier *notifier, QObject *parent)
@@ -122,15 +123,14 @@ auto ProjectHandler::handleOpen(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("File not found: %1").arg(path)}}}};
     }
 
-    // Open the project file
-    pCore->projectManager()->doOpenFile(url, nullptr);
+    // Defer the open operation to run after response is sent
+    // This prevents QML setup from disrupting the WebSocket response
+    QTimer::singleShot(0, [url]() {
+        pCore->projectManager()->doOpenFile(url, nullptr);
+        QCoreApplication::processEvents();
+    });
 
-    // Process pending events to let QML settle after project change
-    QCoreApplication::processEvents();
-
-    // Notify if subscribed
-    m_notifier->notifyProjectOpened(path);
-
+    // Return immediately - client should poll project.getInfo or wait for notification
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("opened"), true}, {QStringLiteral("path"), path}}}};
 }
 
@@ -180,17 +180,24 @@ auto ProjectHandler::handleClose(const QJsonObject &params) -> QJsonObject
         return makeProjectNotOpenError();
     }
 
-    bool saveChanges = params.value(QStringLiteral("saveChanges")).toBool(true);
+    // For RPC, default to NOT prompting for save (automation should explicitly save first)
+    // This avoids blocking modal dialogs that would cause timeouts
+    bool saveChanges = params.value(QStringLiteral("saveChanges")).toBool(false);
 
-    bool success = pCore->projectManager()->closeCurrentDocument(saveChanges);
-
-    // Process pending events to let QML settle after project change
-    QCoreApplication::processEvents();
-
-    if (!success) {
-        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
-                                                                 {QStringLiteral("message"), QStringLiteral("Failed to close project")}}}};
+    // If saveChanges requested and project is modified, save it first (no dialog)
+    if (saveChanges && doc->isModified()) {
+        if (!pCore->projectManager()->saveFile()) {
+            return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
+                                                                     {QStringLiteral("message"), QStringLiteral("Failed to save project before closing")}}}};
+        }
     }
+
+    // Defer the close operation to run after response is sent
+    // This prevents QML cleanup from disrupting the WebSocket response
+    QTimer::singleShot(0, []() {
+        pCore->projectManager()->closeCurrentDocument(false);
+        QCoreApplication::processEvents();
+    });
 
     m_notifier->notifyProjectClosed();
 
@@ -206,26 +213,19 @@ auto ProjectHandler::handleNew(const QJsonObject &params) -> QJsonObject
 
     QString profile = params.value(QStringLiteral("profile")).toString();
 
-    // Create new project (don't show project settings dialog)
-    if (profile.isEmpty()) {
-        pCore->projectManager()->newFile(false);
-    } else {
-        pCore->projectManager()->newFile(profile, false);
-    }
+    // Defer the new project operation to run after response is sent
+    // This prevents QML setup from disrupting the WebSocket response
+    QTimer::singleShot(0, [profile]() {
+        if (profile.isEmpty()) {
+            pCore->projectManager()->newFile(false);
+        } else {
+            pCore->projectManager()->newFile(profile, false);
+        }
+        QCoreApplication::processEvents();
+    });
 
-    // Process pending events to let QML settle after project change
-    QCoreApplication::processEvents();
-
-    KdenliveDoc *doc = pCore->projectManager()->current();
-    if (!doc) {
-        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
-                                                                 {QStringLiteral("message"), QStringLiteral("Failed to create new project")}}}};
-    }
-
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("created"), true},
-                                                              {QStringLiteral("fps"), pCore->getCurrentFps()},
-                                                              {QStringLiteral("width"), doc->width()},
-                                                              {QStringLiteral("height"), doc->height()}}}};
+    // Return immediately - client should poll project.getInfo or wait for notification
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("created"), true}}}};
 }
 
 auto ProjectHandler::handleUndo(const QJsonObject & /*params*/) -> QJsonObject
