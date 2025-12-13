@@ -126,6 +126,9 @@ auto ProjectHandler::handleOpen(const QJsonObject &params) -> QJsonObject
     // Defer the open operation to run after response is sent
     // Use 100ms delay to ensure WebSocket response is fully transmitted
     QTimer::singleShot(100, [url]() {
+        if (pCore->closing) {
+            return;
+        }
         pCore->projectManager()->doOpenFile(url, nullptr);
         QCoreApplication::processEvents();
     });
@@ -195,6 +198,9 @@ auto ProjectHandler::handleClose(const QJsonObject &params) -> QJsonObject
     // Defer the close operation to run after response is sent
     // Use 100ms delay to ensure WebSocket response is fully transmitted
     QTimer::singleShot(100, []() {
+        if (pCore->closing) {
+            return;
+        }
         pCore->projectManager()->closeCurrentDocument(false);
         QCoreApplication::processEvents();
     });
@@ -216,6 +222,9 @@ auto ProjectHandler::handleNew(const QJsonObject &params) -> QJsonObject
     // Defer the new project operation to run after response is sent
     // Use 100ms delay to ensure WebSocket response is fully transmitted
     QTimer::singleShot(100, [profile]() {
+        if (pCore->closing) {
+            return;
+        }
         if (profile.isEmpty()) {
             pCore->projectManager()->newFile(false);
         } else {

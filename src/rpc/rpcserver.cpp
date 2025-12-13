@@ -92,7 +92,9 @@ void RpcServer::stop()
         QWebSocket *oldClient = m_client;
         m_client = nullptr;
         m_notifier->setClient(nullptr);
-        disconnect(oldClient, nullptr, this, nullptr);
+
+        // Block signals to prevent callbacks during shutdown, then close
+        oldClient->blockSignals(true);
         oldClient->close();
         oldClient->deleteLater();
     }
@@ -146,8 +148,10 @@ void RpcServer::onNewConnection()
         // Clear notifier reference first to prevent stale pointer access
         m_notifier->setClient(nullptr);
 
-        // Now safely disconnect and cleanup the old socket
-        disconnect(oldClient, nullptr, this, nullptr);
+        // Block all signals from the old socket to prevent callbacks during cleanup
+        oldClient->blockSignals(true);
+
+        // Now close and schedule deletion
         oldClient->close();
         oldClient->deleteLater();
     }
@@ -174,15 +178,21 @@ void RpcServer::onClientDisconnected()
     // Only handle if it's our current client (not an old one being replaced)
     if (m_client && m_client == disconnectedSocket) {
         qInfo() << "RpcServer: Client disconnected";
-        m_client->deleteLater();
+
+        // Clear m_client BEFORE calling deleteLater to prevent re-entry issues
+        QWebSocket *socketToDelete = m_client;
         m_client = nullptr;
         m_authenticated = m_authToken.isEmpty();
         m_notifier->setClient(nullptr);
+
+        // Block signals before deletion to prevent further callbacks
+        socketToDelete->blockSignals(true);
+        socketToDelete->deleteLater();
+
         Q_EMIT clientDisconnected();
-    } else if (disconnectedSocket) {
-        // Old client being replaced - just clean it up
-        disconnectedSocket->deleteLater();
     }
+    // Note: We don't handle the else case anymore - old sockets being replaced
+    // are already scheduled for deletion in onNewConnection()
 }
 
 void RpcServer::onTextMessageReceived(const QString &message)

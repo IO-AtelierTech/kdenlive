@@ -406,7 +406,41 @@ auto TimelineHandler::handleInsertClip(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Failed to insert clip")}}}};
     }
 
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("clipId"), clipId}}}};
+    // Check for linked A/V clips (Kdenlive auto-creates linked audio/video clips)
+    auto model = controller->getModel();
+    QJsonObject result{{QStringLiteral("clipId"), clipId}};
+
+    std::unordered_set<int> groupElements = model->getGroupElements(clipId);
+    if (groupElements.size() > 1) {
+        // Find the audio clip ID among the linked clips
+        QJsonArray linkedClipIds;
+        int audioClipId = -1;
+        int videoClipId = -1;
+
+        for (int linkedClipId : groupElements) {
+            linkedClipIds.append(linkedClipId);
+
+            int linkedTrackId = model->getClipTrackId(linkedClipId);
+            if (linkedTrackId >= 0) {
+                if (model->isAudioTrack(linkedTrackId)) {
+                    audioClipId = linkedClipId;
+                } else {
+                    videoClipId = linkedClipId;
+                }
+            }
+        }
+
+        result[QStringLiteral("linkedClipIds")] = linkedClipIds;
+
+        if (audioClipId >= 0) {
+            result[QStringLiteral("audioClipId")] = audioClipId;
+        }
+        if (videoClipId >= 0) {
+            result[QStringLiteral("videoClipId")] = videoClipId;
+        }
+    }
+
+    return QJsonObject{{QStringLiteral("result"), result}};
 }
 
 auto TimelineHandler::handleMoveClip(const QJsonObject &params) -> QJsonObject

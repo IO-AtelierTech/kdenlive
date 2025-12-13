@@ -19,6 +19,7 @@
 
 #include <QCoreApplication>
 #include <QJsonArray>
+#include <QTimer>
 #include <QUrl>
 
 BinHandler::BinHandler(RpcNotifier *notifier, QObject *parent)
@@ -276,21 +277,23 @@ auto BinHandler::handleImportClip(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Invalid URL: %1").arg(urlStr)}}}};
     }
 
-    // Disable profile check dialog for RPC imports
-    pCore->bin()->shouldCheckProfile = false;
+    // Defer the import operation to run after response is sent
+    // This prevents blocking the RPC thread during thumbnail/waveform generation
+    QTimer::singleShot(100, [url]() {
+        // Check if project is still open before importing
+        if (pCore->closing || !pCore->projectManager()->current()) {
+            qWarning() << "RpcServer: Skipping import, project closed";
+            return;
+        }
 
-    // Import synchronously - this returns the bin clip ID
-    QString clipId = pCore->bin()->slotAddClipToProject(url);
+        // Disable profile check dialog for RPC imports
+        pCore->bin()->shouldCheckProfile = false;
+        pCore->bin()->slotAddClipToProject(url);
+        QCoreApplication::processEvents();
+    });
 
-    // Let UI settle
-    QCoreApplication::processEvents();
-
-    if (clipId.isEmpty()) {
-        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
-                                                                 {QStringLiteral("message"), QStringLiteral("Failed to import clip")}}}};
-    }
-
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("clipId"), clipId}, {QStringLiteral("url"), urlStr}}}};
+    // Return immediately - client should poll bin.listClips or use notifications
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("importing"), true}, {QStringLiteral("url"), urlStr}}}};
 }
 
 auto BinHandler::handleImportClips(const QJsonObject &params) -> QJsonObject
@@ -311,14 +314,14 @@ auto BinHandler::handleImportClips(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Missing 'urls' parameter")}}}};
     }
 
-    QString folderId = params.value(QStringLiteral("folderId")).toString();
-
     QList<QUrl> urlList;
+    QJsonArray urlStrings;
     for (const QJsonValue &val : urls) {
         QString urlStr = val.toString();
         QUrl url = QUrl::fromLocalFile(urlStr);
         if (url.isValid()) {
             urlList.append(url);
+            urlStrings.append(urlStr);
         }
     }
 
@@ -327,29 +330,31 @@ auto BinHandler::handleImportClips(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("No valid URLs provided")}}}};
     }
 
-    // Disable profile check dialog for RPC imports
-    pCore->bin()->shouldCheckProfile = false;
-
-    // Import each clip synchronously and collect IDs
-    QJsonArray importedClips;
-    QJsonArray failedUrls;
-
-    for (const QUrl &url : urlList) {
-        QString clipId = pCore->bin()->slotAddClipToProject(url);
-        if (!clipId.isEmpty()) {
-            QJsonObject clipInfo;
-            clipInfo[QStringLiteral("clipId")] = clipId;
-            clipInfo[QStringLiteral("url")] = url.toLocalFile();
-            importedClips.append(clipInfo);
-        } else {
-            failedUrls.append(url.toLocalFile());
+    // Defer the import operation to run after response is sent
+    // This prevents blocking the RPC thread during thumbnail/waveform generation
+    QTimer::singleShot(100, [urlList]() {
+        // Check if project is still open before importing
+        if (pCore->closing || !pCore->projectManager()->current()) {
+            qWarning() << "RpcServer: Skipping import, project closed";
+            return;
         }
-    }
 
-    // Let UI settle
-    QCoreApplication::processEvents();
+        // Disable profile check dialog for RPC imports
+        pCore->bin()->shouldCheckProfile = false;
 
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("imported"), importedClips}, {QStringLiteral("failed"), failedUrls}}}};
+        for (const QUrl &url : urlList) {
+            // Check again before each clip in case project closes during batch
+            if (pCore->closing || !pCore->projectManager()->current()) {
+                break;
+            }
+            pCore->bin()->slotAddClipToProject(url);
+        }
+        QCoreApplication::processEvents();
+    });
+
+    // Return immediately - client should poll bin.listClips or use notifications
+    return QJsonObject{{QStringLiteral("result"),
+                        QJsonObject{{QStringLiteral("importing"), true}, {QStringLiteral("count"), urlList.size()}, {QStringLiteral("urls"), urlStrings}}}};
 }
 
 auto BinHandler::handleDeleteClip(const QJsonObject &params) -> QJsonObject

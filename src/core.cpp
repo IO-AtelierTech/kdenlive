@@ -1407,12 +1407,23 @@ void Core::profileChanged()
 
 void Core::pushUndo(const Fun &undo, const Fun &redo, const QString &text)
 {
-    undoStack()->push(new FunctionalUndoCommand(undo, redo, text));
+    auto stack = undoStack();
+    if (!stack) {
+        qWarning() << "Core::pushUndo called with no undo stack (project closed?)";
+        return;
+    }
+    stack->push(new FunctionalUndoCommand(undo, redo, text));
 }
 
 void Core::pushUndo(QUndoCommand *command)
 {
-    undoStack()->push(command);
+    auto stack = undoStack();
+    if (!stack) {
+        qWarning() << "Core::pushUndo called with no undo stack (project closed?)";
+        delete command; // Cleanup if we can't push
+        return;
+    }
+    stack->push(command);
 }
 
 int Core::undoIndex() const
@@ -1501,7 +1512,10 @@ std::shared_ptr<EffectStackModel> Core::getItemEffectStack(const QUuid &uuid, in
 
 std::shared_ptr<DocUndoStack> Core::undoStack()
 {
-    return projectManager()->undoStack();
+    if (!m_projectManager || !m_projectManager->current()) {
+        return nullptr;
+    }
+    return m_projectManager->undoStack();
 }
 
 QMap<int, QString> Core::getTrackNames(bool videoOnly)
