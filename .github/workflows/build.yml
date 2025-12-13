@@ -1,0 +1,255 @@
+# SPDX-FileCopyrightText: none
+# SPDX-License-Identifier: CC0-1.0
+#
+# GitHub Actions workflow for Kdenlive WebSocket Fork
+# Builds Windows exe and Linux AppImage using KDE CraftMaster
+#
+# Based on: https://github.com/owncloud/client/blob/master/.github/workflows/main.yml
+
+name: Build Kdenlive WebSocket
+
+on:
+  push:
+    tags:
+      - 'v*'                    # Release builds on version tags only
+  workflow_dispatch:            # Manual trigger for testing
+
+concurrency:
+  group: ${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions: {}
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  # ===========================================================================
+  # Build Job - Windows and Linux
+  # ===========================================================================
+  build:
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false          # Continue other builds if one fails
+      matrix:
+        include:
+          - name: windows-x86_64
+            target: windows-cl-msvc2022-x86_64
+            os: windows-latest
+            container:
+
+          - name: linux-x86_64
+            target: linux-64-gcc
+            os: ubuntu-latest
+            # KDE's Craft AppImage build container
+            container: kdeorg/ci-suse-qt68:latest
+
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+
+    env:
+      CRAFT_TARGET: ${{ matrix.target }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      # -----------------------------------------------------------------------
+      # Checkout
+      # -----------------------------------------------------------------------
+      - name: Check out source code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # Full history for version detection
+
+      # -----------------------------------------------------------------------
+      # Setup Python (Windows only - Linux container has it)
+      # -----------------------------------------------------------------------
+      - name: Setup Python
+        if: runner.os == 'Windows'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # -----------------------------------------------------------------------
+      # Restore Craft cache
+      # -----------------------------------------------------------------------
+      - name: Restore Craft cache
+        uses: actions/cache@v4
+        with:
+          path: ~/cache
+          key: craft-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('.craft.ini') }}
+          restore-keys: |
+            craft-${{ runner.os }}-${{ matrix.target }}-
+
+      # -----------------------------------------------------------------------
+      # Clone CraftMaster
+      # -----------------------------------------------------------------------
+      - name: Clone CraftMaster
+        run: |
+          git clone --depth=1 https://invent.kde.org/kde/craftmaster.git "$env:HOME/craft/CraftMaster/CraftMaster"
+
+      # -----------------------------------------------------------------------
+      # Setup Craft environment
+      # -----------------------------------------------------------------------
+      - name: Craft setup
+        run: |
+          New-Item -Path ~/cache -ItemType Directory -ErrorAction SilentlyContinue
+          & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" --setup
+
+      # -----------------------------------------------------------------------
+      # Configure source directory override
+      # -----------------------------------------------------------------------
+      - name: Configure Kdenlive source
+        run: |
+          # Point Craft to use our checked-out source instead of fetching from upstream
+          & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --set srcDir="$env:GITHUB_WORKSPACE" kde/kdemultimedia/kdenlive
+
+      # -----------------------------------------------------------------------
+      # Prepare build environment
+      # -----------------------------------------------------------------------
+      - name: Prepare build environment
+        run: |
+          New-Item -ItemType Directory "$env:GITHUB_WORKSPACE/binaries/" -ErrorAction SilentlyContinue
+
+          # Install packaging tools
+          if ($IsWindows) {
+              & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c dev-utils/nsis
+          } elseif ($IsLinux) {
+              & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c dev-utils/linuxdeploy
+          }
+
+      # -----------------------------------------------------------------------
+      # Install dependencies
+      # -----------------------------------------------------------------------
+      - name: Install dependencies
+        run: |
+          & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --install-deps kde/kdemultimedia/kdenlive
+
+      # -----------------------------------------------------------------------
+      # Build Kdenlive
+      # -----------------------------------------------------------------------
+      - name: Build Kdenlive
+        run: |
+          # Build with RPC enabled (default in our fork)
+          & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --no-cache kde/kdemultimedia/kdenlive
+
+      # -----------------------------------------------------------------------
+      # Run tests
+      # -----------------------------------------------------------------------
+      - name: Run tests
+        run: |
+          & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --test kde/kdemultimedia/kdenlive
+        continue-on-error: true   # Don't fail build on test failures (for now)
+
+      # -----------------------------------------------------------------------
+      # Package
+      # -----------------------------------------------------------------------
+      - name: Create package
+        run: |
+          & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --package kde/kdemultimedia/kdenlive
+
+      # -----------------------------------------------------------------------
+      # Collect artifacts
+      # -----------------------------------------------------------------------
+      - name: Collect artifacts
+        run: |
+          # Copy built packages to artifacts directory
+          Copy-Item "$env:HOME/craft/binaries/*" "$env:GITHUB_WORKSPACE/binaries/" -ErrorAction SilentlyContinue -Recurse
+
+          # List what we built
+          Write-Host "Built artifacts:"
+          Get-ChildItem "$env:GITHUB_WORKSPACE/binaries/" -Recurse | ForEach-Object { Write-Host "  $_" }
+
+      # -----------------------------------------------------------------------
+      # Upload artifacts
+      # -----------------------------------------------------------------------
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kdenlive-websocket-${{ matrix.name }}
+          path: ${{ github.workspace }}/binaries/*
+          retention-days: 30
+
+  # ===========================================================================
+  # Release Job - Create GitHub Release on tag push
+  # ===========================================================================
+  release:
+    name: Create Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write           # Required to create releases
+
+    steps:
+      # -----------------------------------------------------------------------
+      # Download all build artifacts
+      # -----------------------------------------------------------------------
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: kdenlive-websocket-windows-x86_64
+          path: release/windows
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: kdenlive-websocket-linux-x86_64
+          path: release/linux
+
+      # -----------------------------------------------------------------------
+      # Prepare release files
+      # -----------------------------------------------------------------------
+      - name: Prepare release files
+        run: |
+          mkdir -p release/final
+
+          # Get version from tag
+          VERSION="${GITHUB_REF#refs/tags/}"
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
+          # Find and rename artifacts with version
+          find release/windows -name "*.exe" -exec cp {} "release/final/Kdenlive-WebSocket-${VERSION}-x86_64-setup.exe" \;
+          find release/linux -name "*.AppImage" -exec cp {} "release/final/Kdenlive-WebSocket-${VERSION}-x86_64.AppImage" \;
+
+          # Make AppImage executable
+          chmod +x release/final/*.AppImage 2>/dev/null || true
+
+          # List final release files
+          echo "Release files:"
+          ls -la release/final/
+
+      # -----------------------------------------------------------------------
+      # Create GitHub Release
+      # -----------------------------------------------------------------------
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Kdenlive WebSocket ${{ env.VERSION }}
+          body: |
+            ## Kdenlive WebSocket Fork - ${{ env.VERSION }}
+
+            This release includes JSON-RPC WebSocket support for automation.
+
+            ### Downloads
+            - **Windows**: `Kdenlive-WebSocket-${{ env.VERSION }}-x86_64-setup.exe`
+            - **Linux**: `Kdenlive-WebSocket-${{ env.VERSION }}-x86_64.AppImage`
+
+            ### WebSocket RPC
+            - Default port: `9876`
+            - Connect: `ws://localhost:9876`
+            - Documentation: See `dev-docs/rpc-api.md`
+
+            ### Notes
+            - Artifacts are unsigned (code signing planned for future releases)
+            - Report issues: https://github.com/IO-AtelierTech/kdenlive/issues
+          files: release/final/*
+          draft: false
+          prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
