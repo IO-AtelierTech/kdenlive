@@ -768,8 +768,10 @@ void GuidesList::updateFilter(QList<int> categories)
             const QString binId = markerModel->ownerId();
             if (!binId.isEmpty()) {
                 auto clip = pCore->projectItemModel()->getClipByBinID(binId);
-                clip->getFilteredMarkerModel()->slotSetFilters(categories);
-                m_lastSelectedMarkerCategories = categories;
+                if (clip) {
+                    clip->getFilteredMarkerModel()->slotSetFilters(categories);
+                    m_lastSelectedMarkerCategories = categories;
+                }
             }
         }
         break;
