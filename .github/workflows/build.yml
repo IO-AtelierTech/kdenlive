@@ -39,7 +39,6 @@ jobs:
           - name: windows-x86_64
             target: windows-cl-msvc2022-x86_64
             os: windows-latest
-            container:
 
           - name: linux-x86_64
             target: linux-64-gcc
