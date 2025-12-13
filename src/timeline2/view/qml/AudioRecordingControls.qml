@@ -10,7 +10,7 @@ import QtQuick.Layouts 1.15
 Item {
     id: recContainer
     property int trackId: -1
-    property int recState: audiorec.recordState
+    property int recState: audiorec ? audiorec.recordState : 0
     width: parent.width
     implicitHeight: root.baseUnit * 1.5 + 4  // +4 for tick marks below levels
     

@@ -109,7 +109,7 @@ Item {
         Item {
             id: guideRoot
             anchors.fill: parent
-            property bool activated : proxy.position === model.frame
+            property bool activated : proxy ? proxy.position === model.frame : false
             property bool isRangeMarker: model.hasRange
             property real markerDuration: model.duration
             property real markerEndPos: model.endPos
