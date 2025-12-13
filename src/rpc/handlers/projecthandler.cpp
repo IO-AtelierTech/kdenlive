@@ -7,9 +7,9 @@
 #include "../rpcnotifier.h"
 
 #include "core.h"
+#include "doc/docundostack.hpp"
 #include "doc/kdenlivedoc.h"
 #include "project/projectmanager.h"
-#include "undohelper.hpp"
 
 #include <QUrl>
 

@@ -13,6 +13,7 @@
 #include "effects/effectstack/model/effectitemmodel.hpp"
 #include "effects/effectstack/model/effectstackmodel.hpp"
 #include "project/projectmanager.h"
+#include "timeline2/model/timelineitemmodel.hpp"
 #include "timeline2/model/timelinemodel.hpp"
 
 #include <QDomDocument>
@@ -168,8 +169,14 @@ QJsonObject EffectsHandler::handleListAvailable(const QJsonObject & /*params*/)
         case AssetListType::AssetType::TemplateAudio:
             typeStr = QStringLiteral("templateAudio");
             break;
-        case AssetListType::AssetType::TemplateVideo:
-            typeStr = QStringLiteral("templateVideo");
+        case AssetListType::AssetType::Template:
+            typeStr = QStringLiteral("template");
+            break;
+        case AssetListType::AssetType::TemplateCustom:
+            typeStr = QStringLiteral("templateCustom");
+            break;
+        case AssetListType::AssetType::TemplateCustomAudio:
+            typeStr = QStringLiteral("templateCustomAudio");
             break;
         case AssetListType::AssetType::Preferred:
             typeStr = QStringLiteral("preferred");
@@ -359,7 +366,7 @@ QJsonObject EffectsHandler::handleGetClipEffects(const QJsonObject &params)
             effectObj[QStringLiteral("index")] = i;
             effectObj[QStringLiteral("id")] = effect->getAssetId();
             effectObj[QStringLiteral("name")] = EffectsRepository::get()->getName(effect->getAssetId());
-            effectObj[QStringLiteral("enabled")] = effect->isEnabled();
+            effectObj[QStringLiteral("enabled")] = effect->isAssetEnabled();
             effects.append(effectObj);
         }
     }
@@ -482,7 +489,7 @@ QJsonObject EffectsHandler::handleEnable(const QJsonObject &params)
         return makeEffectIndexError(effectIndex);
     }
 
-    effect->setEnabled(true);
+    effect->setAssetEnabled(true);
 
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("enabled"), true}}}};
 }
@@ -521,7 +528,7 @@ QJsonObject EffectsHandler::handleDisable(const QJsonObject &params)
         return makeEffectIndexError(effectIndex);
     }
 
-    effect->setEnabled(false);
+    effect->setAssetEnabled(false);
 
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("enabled"), false}}}};
 }
@@ -650,7 +657,10 @@ QJsonObject EffectsHandler::handleGetKeyframes(const QJsonObject &params)
     }
 
     QJsonArray keyframeArray;
-    auto kfModel = keyframes->getKeyModel(property);
+    // Note: getKeyModel() returns the first keyframeable parameter's model
+    // The 'property' parameter is kept for API consistency but all keyframes are returned
+    Q_UNUSED(property)
+    auto kfModel = keyframes->getKeyModel();
     if (kfModel) {
         for (auto it = kfModel->begin(); it != kfModel->end(); ++it) {
             QJsonObject kfObj;
@@ -731,11 +741,13 @@ QJsonObject EffectsHandler::handleSetKeyframe(const QJsonObject &params)
         kfType = KeyframeType::Curve;
     }
 
+    Q_UNUSED(property)
     GenTime pos(frame, doc->fps());
     bool success = keyframes->addKeyframe(pos, kfType);
 
-    if (success) {
-        keyframes->updateKeyframe(pos, QVariant(value));
+    if (success && !value.isEmpty()) {
+        // Update keyframe value using the move-with-value signature (oldPos, newPos, value, logUndo)
+        keyframes->updateKeyframe(pos, pos, QVariant(value), false);
     }
 
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("success"), success}, {QStringLiteral("frame"), frame}}}};

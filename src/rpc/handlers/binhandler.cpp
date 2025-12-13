@@ -12,6 +12,7 @@
 #include "bin/projectfolder.h"
 #include "bin/projectitemmodel.h"
 #include "core.h"
+#include "doc/docundostack.hpp"
 #include "doc/kdenlivedoc.h"
 #include "project/projectmanager.h"
 #include "undohelper.hpp"

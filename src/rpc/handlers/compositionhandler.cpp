@@ -11,7 +11,6 @@
 #include "doc/kdenlivedoc.h"
 #include "mainwindow.h"
 #include "project/projectmanager.h"
-#include "timeline2/model/compositionmodel.hpp"
 #include "timeline2/model/timelineitemmodel.hpp"
 #include "timeline2/model/timelinemodel.hpp"
 #include "timeline2/view/timelinecontroller.h"
@@ -19,6 +18,7 @@
 #include "transitions/transitionsrepository.hpp"
 
 #include <QJsonArray>
+#include <unordered_set>
 
 CompositionHandler::CompositionHandler(RpcNotifier *notifier, QObject *parent)
     : QObject(parent)
@@ -91,18 +91,29 @@ QJsonObject CompositionHandler::handleList(const QJsonObject & /*params*/)
 
     QJsonArray compositions;
 
-    // Iterate through all compositions in the model
-    for (auto it = model->m_allCompositions.begin(); it != model->m_allCompositions.end(); ++it) {
-        int compoId = it->first;
-        auto compo = it->second;
+    // Get all items in the timeline and filter for compositions
+    std::unordered_set<int> allItems = model->getItemsInRange(-1, 0, -1, true);
+    for (int itemId : allItems) {
+        if (!model->isComposition(itemId)) {
+            continue;
+        }
 
         QJsonObject compoInfo;
-        compoInfo[QStringLiteral("id")] = compoId;
-        compoInfo[QStringLiteral("trackId")] = model->getCompositionTrackId(compoId);
-        compoInfo[QStringLiteral("position")] = model->getCompositionPosition(compoId);
-        compoInfo[QStringLiteral("duration")] = model->getCompositionPlaytime(compoId);
-        compoInfo[QStringLiteral("aTrack")] = compo->getATrack();
-        compoInfo[QStringLiteral("name")] = compo->displayName();
+        compoInfo[QStringLiteral("id")] = itemId;
+        compoInfo[QStringLiteral("trackId")] = model->getCompositionTrackId(itemId);
+        compoInfo[QStringLiteral("position")] = model->getCompositionPosition(itemId);
+        compoInfo[QStringLiteral("duration")] = model->getCompositionPlaytime(itemId);
+
+        // Get aTrack via controller's public method
+        QPair<int, int> aTrackInfo = controller->getCompositionATrack(itemId);
+        compoInfo[QStringLiteral("aTrack")] = aTrackInfo.first;
+
+        // Get composition name via parameter model
+        auto paramModel = model->getCompositionParameterModel(itemId);
+        if (paramModel) {
+            QString assetId = paramModel->getAssetId();
+            compoInfo[QStringLiteral("name")] = TransitionsRepository::get()->getName(assetId);
+        }
 
         compositions.append(compoInfo);
     }
@@ -220,12 +231,18 @@ QJsonObject CompositionHandler::handleGetProperties(const QJsonObject &params)
     properties[QStringLiteral("duration")] = model->getCompositionPlaytime(compositionId);
     properties[QStringLiteral("trackId")] = model->getCompositionTrackId(compositionId);
 
-    // Get composition pointer for additional info
-    auto compo = model->getCompositionPtr(compositionId);
-    if (compo) {
-        properties[QStringLiteral("aTrack")] = compo->getATrack();
-        properties[QStringLiteral("forcedTrack")] = compo->getForcedTrack();
-        properties[QStringLiteral("name")] = compo->displayName();
+    // Get aTrack info via controller's public method
+    QPair<int, int> aTrackInfo = controller->getCompositionATrack(compositionId);
+    properties[QStringLiteral("aTrack")] = aTrackInfo.first;
+
+    // Check if composition has auto track (forcedTrack == -1 means auto)
+    properties[QStringLiteral("autoTrack")] = controller->compositionAutoTrack(compositionId);
+
+    // Get composition name via parameter model
+    auto paramModel = model->getCompositionParameterModel(compositionId);
+    if (paramModel) {
+        QString assetId = paramModel->getAssetId();
+        properties[QStringLiteral("name")] = TransitionsRepository::get()->getName(assetId);
     }
 
     return QJsonObject{{QStringLiteral("result"), properties}};
