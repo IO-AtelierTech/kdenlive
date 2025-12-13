@@ -96,6 +96,13 @@ jobs:
           & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" --setup
 
       # -----------------------------------------------------------------------
+      # Restore blueprint repository configuration
+      # -----------------------------------------------------------------------
+      - name: Craft unshelve
+        run: |
+          & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --unshelve "$env:GITHUB_WORKSPACE/.craft.shelf"
+
+      # -----------------------------------------------------------------------
       # Configure source directory override
       # -----------------------------------------------------------------------
       - name: Configure Kdenlive source

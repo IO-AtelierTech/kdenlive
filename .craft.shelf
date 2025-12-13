@@ -1,0 +1,9 @@
+[General]
+version = 2
+blueprintrepositories = https://invent.kde.org/packaging/craft-blueprints-kde.git|master|
+
+[craft/craft-blueprints-kde]
+version = master
+
+[craft/craft-core]
+version = master
