@@ -4,7 +4,6 @@
 Checks:          'clang-diagnostic-*,clang-analyzer-*,,performance-*,modernize-*,readability-*, cppcoreguidelines-*, misc-definitions-in-headers, misc-misplaced-const'
 WarningsAsErrors: ''
 HeaderFilterRegex: ''
-AnalyzeTemporaryDtors: false
 FormatStyle:     file
 User:            nicolas
 CheckOptions:    
