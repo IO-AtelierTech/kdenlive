@@ -122,7 +122,52 @@ jobs:
             desktop-file-utils \
             libgdk-pixbuf2.0-dev \
             librsvg2-dev \
-            zsync
+            zsync \
+            libxcb1-dev \
+            libxcb-util-dev \
+            libxcb-keysyms1-dev \
+            libxcb-image0-dev \
+            libxcb-shm0-dev \
+            libxcb-icccm4-dev \
+            libxcb-sync-dev \
+            libxcb-xfixes0-dev \
+            libxcb-shape0-dev \
+            libxcb-randr0-dev \
+            libxcb-render-util0-dev \
+            libxcb-xinerama0-dev \
+            libxcb-xkb-dev \
+            libxcb-cursor-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libgl1-mesa-dev \
+            libegl1-mesa-dev \
+            libgles2-mesa-dev \
+            libwayland-dev \
+            libwayland-egl1-mesa \
+            libinput-dev \
+            libdrm-dev \
+            libgbm-dev \
+            libpulse-dev \
+            libasound2-dev \
+            libcups2-dev \
+            libdbus-1-dev \
+            libatspi2.0-dev \
+            libfontconfig1-dev \
+            libfreetype-dev \
+            libharfbuzz-dev \
+            libicu-dev \
+            libjpeg-dev \
+            libpng-dev \
+            libssl-dev \
+            libsqlite3-dev \
+            libpcre2-dev \
+            libglib2.0-dev \
+            libx11-dev \
+            libx11-xcb-dev \
+            libxext-dev \
+            libxi-dev \
+            libxrender-dev \
+            libxrandr-dev
 
       # -----------------------------------------------------------------------
       # Clone CraftMaster
