@@ -461,16 +461,32 @@ List folders in project bin.
 ```
 
 #### bin.importClip
-Import a media file.
+Import a single media file.
 
-**Request:** `{"path": "/path/to/video.mp4", "folderId": "2"}`
-**Response:** `{"clipId": "5", "imported": true}`
+**Request:** `{"url": "/path/to/video.mp4", "folderId": "2"}`
+**Response:** `{"clipId": "5"}`
+
+The method waits for the clip to finish loading before returning. This ensures the clip is ready for immediate use.
+
+#### bin.importClips
+Import multiple media files.
+
+**Request:** `{"urls": ["/path/to/video1.mp4", "/path/to/video2.mp4"], "folderId": "2"}`
+**Response:** `{"clipIds": ["5", "6"]}`
+
+**Limitation:** Files are imported sequentially (one at a time) rather than concurrently. This is due to Kdenlive's clip loading architecture where multiple simultaneous ClipLoadTasks can deadlock. While slower than parallel imports, this ensures reliable operation.
 
 #### bin.deleteClip
-Delete a clip from bin.
+Delete a single clip from bin.
 
 **Request:** `{"clipId": "3"}`
 **Response:** `{"deleted": true}`
+
+#### bin.deleteClips
+Delete multiple clips from bin.
+
+**Request:** `{"clipIds": ["3", "4", "5"]}`
+**Response:** `{"count": 3}`
 
 #### bin.createFolder
 Create a new folder.
