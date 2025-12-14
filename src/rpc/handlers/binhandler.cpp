@@ -412,7 +412,7 @@ auto BinHandler::handleImportClip(const QJsonObject &params) -> QJsonObject
         fprintf(stderr, "BinHandler::handleImportClip: waiting for clip to load...\n");
         fflush(stderr);
         int waitCount = 0;
-        const int maxWait = 300; // 30 seconds max (100ms * 300)
+        const int maxWait = 50; // 5 seconds max (100ms * 50)
         while (clip->clipStatus() == FileStatus::StatusWaiting && waitCount < maxWait) {
             qApp->processEvents(QEventLoop::AllEvents, 100);
             waitCount++;
@@ -499,7 +499,7 @@ auto BinHandler::handleImportClips(const QJsonObject &params) -> QJsonObject
         auto clip = pCore->projectItemModel()->getClipByBinID(clipId);
         if (clip) {
             int waitCount = 0;
-            const int maxWait = 300; // 30 seconds max per clip
+            const int maxWait = 50; // 5 seconds max per clip
             while (clip->clipStatus() == FileStatus::StatusWaiting && waitCount < maxWait) {
                 qApp->processEvents(QEventLoop::AllEvents, 100);
                 waitCount++;
