@@ -403,8 +403,7 @@ auto BinHandler::handleImportClip(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Failed to import clip")}}}};
     }
 
-    // Push undo action
-    pCore->pushUndo(undo, redo, i18n("Import clip via RPC"));
+    // No pushUndo - RPC clients can use deleteClip to undo if needed
 
     // Wait for clip to finish loading to avoid deadlock from ClipLoadTask's BlockingQueuedConnection
     // We must process events to allow the background task to complete its queued calls
@@ -472,49 +471,43 @@ auto BinHandler::handleImportClips(const QJsonObject &params) -> QJsonObject
     fprintf(stderr, "BinHandler::handleImportClips: importing %lld files to folder %s\n", urlList.size(), folderId.toUtf8().constData());
     fflush(stderr);
 
-    // Disable profile check dialog for RPC imports
-    pCore->bin()->shouldCheckProfile = false;
-
-    // Use createClipFromFile directly for each URL - this avoids qApp->processEvents()
-    // calls that cause event loop reentrancy and freezes when called from RPC handler
-    Fun undo = []() { return true; };
-    Fun redo = []() { return true; };
-
+    // Import each clip using the exact same code path as handleImportClip
     QJsonArray clipIds;
-    auto model = pCore->projectItemModel();
 
-    // Import clips sequentially - wait for each to finish before importing next
-    // Concurrent import doesn't work because multiple ClipLoadTasks block each other
     for (const QUrl &url : urlList) {
         fprintf(stderr, "BinHandler::handleImportClips: importing %s\n", url.toLocalFile().toUtf8().constData());
         fflush(stderr);
 
-        QString clipId = ClipCreator::createClipFromFile(url.toLocalFile(), folderId, model, undo, redo);
+        // Replicate handleImportClip exactly for each file
+        pCore->bin()->shouldCheckProfile = false;
+
+        Fun undo = []() { return true; };
+        Fun redo = []() { return true; };
+
+        QString clipId = ClipCreator::createClipFromFile(url.toLocalFile(), folderId, pCore->projectItemModel(), undo, redo);
 
         fprintf(stderr, "BinHandler::handleImportClips: createClipFromFile returned clipId=%s\n", clipId.toUtf8().constData());
         fflush(stderr);
 
-        if (!clipId.isEmpty() && clipId != QLatin1String("-1")) {
-            clipIds.append(clipId);
-
-            // Wait for this clip to finish loading before importing the next
-            auto clip = model->getClipByBinID(clipId);
-            if (clip) {
-                int waitCount = 0;
-                const int maxWait = 300; // 30 seconds max per clip
-                while (clip->clipStatus() == FileStatus::StatusWaiting && waitCount < maxWait) {
-                    qApp->processEvents(QEventLoop::AllEvents, 100);
-                    waitCount++;
-                }
-                fprintf(stderr, "BinHandler::handleImportClips: clip %s ready after %d iterations, status=%d\n", clipId.toUtf8().constData(), waitCount,
-                        static_cast<int>(clip->clipStatus()));
-                fflush(stderr);
-            }
+        if (clipId.isEmpty() || clipId == QLatin1String("-1")) {
+            continue;
         }
-    }
 
-    if (!clipIds.isEmpty()) {
-        pCore->pushUndo(undo, redo, i18n("Import clips via RPC"));
+        clipIds.append(clipId);
+
+        // Wait for clip to finish loading (same as handleImportClip)
+        auto clip = pCore->projectItemModel()->getClipByBinID(clipId);
+        if (clip) {
+            int waitCount = 0;
+            const int maxWait = 300; // 30 seconds max per clip
+            while (clip->clipStatus() == FileStatus::StatusWaiting && waitCount < maxWait) {
+                qApp->processEvents(QEventLoop::AllEvents, 100);
+                waitCount++;
+            }
+            fprintf(stderr, "BinHandler::handleImportClips: clip %s ready after %d iterations, status=%d\n", clipId.toUtf8().constData(), waitCount,
+                    static_cast<int>(clip->clipStatus()));
+            fflush(stderr);
+        }
     }
 
     fprintf(stderr, "BinHandler::handleImportClips: all %lld clips imported\n", clipIds.size());
