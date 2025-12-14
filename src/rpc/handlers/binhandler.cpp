@@ -7,6 +7,7 @@
 #include "../rpcnotifier.h"
 
 #include "bin/bin.h"
+#include "bin/clipcreator.hpp"
 #include "bin/model/markerlistmodel.hpp"
 #include "bin/projectclip.h"
 #include "bin/projectfolder.h"
@@ -20,9 +21,12 @@
 #include "undohelper.hpp"
 
 #include <QCoreApplication>
+#include <QEventLoop>
 #include <QJsonArray>
 #include <QTimer>
 #include <QUrl>
+
+#include <cstdio> // for fprintf/fflush debug logging
 
 BinHandler::BinHandler(RpcNotifier *notifier, QObject *parent)
     : QObject(parent)
@@ -47,8 +51,17 @@ auto BinHandler::supportedMethods() const -> QStringList
 
 auto BinHandler::handle(const QString &method, const QJsonObject &params) -> QJsonObject
 {
+    // Immediate stderr logging to debug freeze
+    fprintf(stderr, "BinHandler::handle called with method: %s\n", method.toUtf8().constData());
+    fflush(stderr);
+
     if (method == QLatin1String("listClips")) {
-        return handleListClips(params);
+        fprintf(stderr, "BinHandler: calling handleListClips\n");
+        fflush(stderr);
+        auto result = handleListClips(params);
+        fprintf(stderr, "BinHandler: handleListClips returned\n");
+        fflush(stderr);
+        return result;
     }
     if (method == QLatin1String("listFolders")) {
         return handleListFolders(params);
@@ -57,16 +70,36 @@ auto BinHandler::handle(const QString &method, const QJsonObject &params) -> QJs
         return handleGetClipInfo(params);
     }
     if (method == QLatin1String("importClip")) {
-        return handleImportClip(params);
+        fprintf(stderr, "BinHandler: calling handleImportClip\n");
+        fflush(stderr);
+        auto result = handleImportClip(params);
+        fprintf(stderr, "BinHandler: handleImportClip returned\n");
+        fflush(stderr);
+        return result;
     }
     if (method == QLatin1String("importClips")) {
-        return handleImportClips(params);
+        fprintf(stderr, "BinHandler: calling handleImportClips\n");
+        fflush(stderr);
+        auto result = handleImportClips(params);
+        fprintf(stderr, "BinHandler: handleImportClips returned\n");
+        fflush(stderr);
+        return result;
     }
     if (method == QLatin1String("deleteClip")) {
-        return handleDeleteClip(params);
+        fprintf(stderr, "BinHandler: calling handleDeleteClip\n");
+        fflush(stderr);
+        auto result = handleDeleteClip(params);
+        fprintf(stderr, "BinHandler: handleDeleteClip returned\n");
+        fflush(stderr);
+        return result;
     }
     if (method == QLatin1String("deleteClips")) {
-        return handleDeleteClips(params);
+        fprintf(stderr, "BinHandler: calling handleDeleteClips\n");
+        fflush(stderr);
+        auto result = handleDeleteClips(params);
+        fprintf(stderr, "BinHandler: handleDeleteClips returned\n");
+        fflush(stderr);
+        return result;
     }
     if (method == QLatin1String("createFolder")) {
         return handleCreateFolder(params);
@@ -108,6 +141,9 @@ auto BinHandler::makeApplicationClosingError() -> QJsonObject
 
 auto BinHandler::handleListClips(const QJsonObject &params) -> QJsonObject
 {
+    fprintf(stderr, "BinHandler::handleListClips START\n");
+    fflush(stderr);
+
     // Check if application is shutting down
     if (pCore->closing) {
         return makeApplicationClosingError();
@@ -123,15 +159,32 @@ auto BinHandler::handleListClips(const QJsonObject &params) -> QJsonObject
         return makeProjectNotOpenError();
     }
 
+    fprintf(stderr, "BinHandler::handleListClips: got model\n");
+    fflush(stderr);
+
     // Optional folder filter
     QString folderId = params.value(QStringLiteral("folderId")).toString();
 
     QJsonArray clips;
+    fprintf(stderr, "BinHandler::handleListClips: calling getAllClipIds\n");
+    fflush(stderr);
     std::vector<QString> allClipIds = model->getAllClipIds();
+    fprintf(stderr, "BinHandler::handleListClips: got %lld clipIds\n", static_cast<long long>(allClipIds.size()));
+    fflush(stderr);
 
     for (const QString &clipId : allClipIds) {
+        fprintf(stderr, "BinHandler::handleListClips: processing clipId=%s\n", clipId.toUtf8().constData());
+        fflush(stderr);
+
+        fprintf(stderr, "BinHandler::handleListClips: calling getClipByBinID\n");
+        fflush(stderr);
         auto clip = model->getClipByBinID(clipId);
+        fprintf(stderr, "BinHandler::handleListClips: getClipByBinID returned\n");
+        fflush(stderr);
+
         if (!clip) {
+            fprintf(stderr, "BinHandler::handleListClips: clip is null, skipping\n");
+            fflush(stderr);
             continue;
         }
 
@@ -143,18 +196,46 @@ auto BinHandler::handleListClips(const QJsonObject &params) -> QJsonObject
             }
         }
 
+        fprintf(stderr, "BinHandler::handleListClips: building clipInfo\n");
+        fflush(stderr);
+
         QJsonObject clipInfo;
         clipInfo[QStringLiteral("id")] = clipId;
         clipInfo[QStringLiteral("name")] = clip->name();
         clipInfo[QStringLiteral("type")] = static_cast<int>(clip->clipType());
-        clipInfo[QStringLiteral("duration")] = static_cast<int>(clip->frameDuration());
         clipInfo[QStringLiteral("url")] = clip->url();
-        clipInfo[QStringLiteral("hasAudio")] = clip->hasAudio();
-        clipInfo[QStringLiteral("hasVideo")] = clip->hasVideo();
 
+        // Check if clip is still loading - if so, skip producer-dependent properties
+        // to avoid deadlock with ClipLoadTask's BlockingQueuedConnection
+        FileStatus::ClipStatus status = clip->clipStatus();
+        fprintf(stderr, "BinHandler::handleListClips: clipStatus=%d (Waiting=%d)\n", static_cast<int>(status), static_cast<int>(FileStatus::StatusWaiting));
+        fflush(stderr);
+
+        if (status == FileStatus::StatusWaiting) {
+            // Clip is still loading, use placeholder values
+            clipInfo[QStringLiteral("duration")] = 0;
+            clipInfo[QStringLiteral("hasAudio")] = false;
+            clipInfo[QStringLiteral("hasVideo")] = false;
+            clipInfo[QStringLiteral("loading")] = true;
+        } else {
+            // Clip is ready, get actual values
+            fprintf(stderr, "BinHandler::handleListClips: getting duration\n");
+            fflush(stderr);
+            clipInfo[QStringLiteral("duration")] = static_cast<int>(clip->frameDuration());
+
+            fprintf(stderr, "BinHandler::handleListClips: getting hasAudio/hasVideo\n");
+            fflush(stderr);
+            clipInfo[QStringLiteral("hasAudio")] = clip->hasAudio();
+            clipInfo[QStringLiteral("hasVideo")] = clip->hasVideo();
+        }
+
+        fprintf(stderr, "BinHandler::handleListClips: appending clip info\n");
+        fflush(stderr);
         clips.append(clipInfo);
     }
 
+    fprintf(stderr, "BinHandler::handleListClips: returning %lld clips\n", static_cast<long long>(clips.size()));
+    fflush(stderr);
     return QJsonObject{{QStringLiteral("result"), clips}};
 }
 
@@ -229,16 +310,32 @@ auto BinHandler::handleGetClipInfo(const QJsonObject &params) -> QJsonObject
     clipInfo[QStringLiteral("id")] = clipId;
     clipInfo[QStringLiteral("name")] = clip->name();
     clipInfo[QStringLiteral("type")] = static_cast<int>(clip->clipType());
-    clipInfo[QStringLiteral("duration")] = static_cast<int>(clip->frameDuration());
     clipInfo[QStringLiteral("url")] = clip->url();
-    clipInfo[QStringLiteral("hasAudio")] = clip->hasAudio();
-    clipInfo[QStringLiteral("hasVideo")] = clip->hasVideo();
 
-    // Additional metadata
-    QSize frameSize = clip->frameSize();
-    clipInfo[QStringLiteral("width")] = frameSize.width();
-    clipInfo[QStringLiteral("height")] = frameSize.height();
-    clipInfo[QStringLiteral("fps")] = clip->getOriginalFps();
+    // Check if clip is still loading - if so, skip producer-dependent properties
+    // to avoid deadlock with ClipLoadTask's BlockingQueuedConnection
+    FileStatus::ClipStatus status = clip->clipStatus();
+    if (status == FileStatus::StatusWaiting) {
+        // Clip is still loading, use placeholder values
+        clipInfo[QStringLiteral("duration")] = 0;
+        clipInfo[QStringLiteral("hasAudio")] = false;
+        clipInfo[QStringLiteral("hasVideo")] = false;
+        clipInfo[QStringLiteral("width")] = 0;
+        clipInfo[QStringLiteral("height")] = 0;
+        clipInfo[QStringLiteral("fps")] = 0.0;
+        clipInfo[QStringLiteral("loading")] = true;
+    } else {
+        // Clip is ready, get actual values
+        clipInfo[QStringLiteral("duration")] = static_cast<int>(clip->frameDuration());
+        clipInfo[QStringLiteral("hasAudio")] = clip->hasAudio();
+        clipInfo[QStringLiteral("hasVideo")] = clip->hasVideo();
+
+        // Additional metadata
+        QSize frameSize = clip->frameSize();
+        clipInfo[QStringLiteral("width")] = frameSize.width();
+        clipInfo[QStringLiteral("height")] = frameSize.height();
+        clipInfo[QStringLiteral("fps")] = clip->getOriginalFps();
+    }
 
     // Parent folder
     auto parent = std::static_pointer_cast<AbstractProjectItem>(clip)->parent();
@@ -251,6 +348,9 @@ auto BinHandler::handleGetClipInfo(const QJsonObject &params) -> QJsonObject
 
 auto BinHandler::handleImportClip(const QJsonObject &params) -> QJsonObject
 {
+    fprintf(stderr, "BinHandler::handleImportClip START\n");
+    fflush(stderr);
+
     // Check if application is shutting down
     if (pCore->closing) {
         return makeApplicationClosingError();
@@ -279,27 +379,60 @@ auto BinHandler::handleImportClip(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Invalid URL: %1").arg(urlStr)}}}};
     }
 
-    // Defer the import operation to run after response is sent
-    // This prevents blocking the RPC thread during thumbnail/waveform generation
-    QTimer::singleShot(100, [url]() {
-        // Check if project is still open before importing
-        if (pCore->closing || !pCore->projectManager()->current()) {
-            qWarning() << "RpcServer: Skipping import, project closed";
-            return;
+    fprintf(stderr, "BinHandler::handleImportClip: url=%s, folderId=%s\n", urlStr.toUtf8().constData(), folderId.toUtf8().constData());
+    fflush(stderr);
+
+    // Disable profile check dialog for RPC imports
+    pCore->bin()->shouldCheckProfile = false;
+
+    // Use createClipFromFile directly - this avoids qApp->processEvents() calls
+    // that cause event loop reentrancy and freezes when called from RPC handler
+    Fun undo = []() { return true; };
+    Fun redo = []() { return true; };
+
+    fprintf(stderr, "BinHandler::handleImportClip: calling createClipFromFile\n");
+    fflush(stderr);
+
+    QString clipId = ClipCreator::createClipFromFile(url.toLocalFile(), folderId, pCore->projectItemModel(), undo, redo);
+
+    fprintf(stderr, "BinHandler::handleImportClip: createClipFromFile returned clipId=%s\n", clipId.toUtf8().constData());
+    fflush(stderr);
+
+    if (clipId.isEmpty() || clipId == QLatin1String("-1")) {
+        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
+                                                                 {QStringLiteral("message"), QStringLiteral("Failed to import clip")}}}};
+    }
+
+    // Push undo action
+    pCore->pushUndo(undo, redo, i18n("Import clip via RPC"));
+
+    // Wait for clip to finish loading to avoid deadlock from ClipLoadTask's BlockingQueuedConnection
+    // We must process events to allow the background task to complete its queued calls
+    auto clip = pCore->projectItemModel()->getClipByBinID(clipId);
+    if (clip) {
+        fprintf(stderr, "BinHandler::handleImportClip: waiting for clip to load...\n");
+        fflush(stderr);
+        int waitCount = 0;
+        const int maxWait = 300; // 30 seconds max (100ms * 300)
+        while (clip->clipStatus() == FileStatus::StatusWaiting && waitCount < maxWait) {
+            qApp->processEvents(QEventLoop::AllEvents, 100);
+            waitCount++;
         }
+        fprintf(stderr, "BinHandler::handleImportClip: clip ready after %d iterations, status=%d\n", waitCount, static_cast<int>(clip->clipStatus()));
+        fflush(stderr);
+    }
 
-        // Disable profile check dialog for RPC imports
-        pCore->bin()->shouldCheckProfile = false;
-        pCore->bin()->slotAddClipToProject(url);
-        QCoreApplication::processEvents();
-    });
+    fprintf(stderr, "BinHandler::handleImportClip: returning clipId=%s\n", clipId.toUtf8().constData());
+    fflush(stderr);
 
-    // Return immediately - client should poll bin.listClips or use notifications
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("importing"), true}, {QStringLiteral("url"), urlStr}}}};
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("clipId"), clipId}}}};
 }
 
 auto BinHandler::handleImportClips(const QJsonObject &params) -> QJsonObject
 {
+    fprintf(stderr, "BinHandler::handleImportClips START\n");
+    fflush(stderr);
+
     // Check if application is shutting down
     if (pCore->closing) {
         return makeApplicationClosingError();
@@ -316,14 +449,18 @@ auto BinHandler::handleImportClips(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Missing 'urls' parameter")}}}};
     }
 
+    QString folderId = params.value(QStringLiteral("folderId")).toString();
+    if (folderId.isEmpty()) {
+        // Use root folder
+        folderId = pCore->projectItemModel()->getRootFolder()->clipId();
+    }
+
     QList<QUrl> urlList;
-    QJsonArray urlStrings;
     for (const QJsonValue &val : urls) {
         QString urlStr = val.toString();
         QUrl url = QUrl::fromLocalFile(urlStr);
         if (url.isValid()) {
             urlList.append(url);
-            urlStrings.append(urlStr);
         }
     }
 
@@ -332,35 +469,76 @@ auto BinHandler::handleImportClips(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("No valid URLs provided")}}}};
     }
 
-    // Defer the import operation to run after response is sent
-    // This prevents blocking the RPC thread during thumbnail/waveform generation
-    QTimer::singleShot(100, [urlList]() {
-        // Check if project is still open before importing
-        if (pCore->closing || !pCore->projectManager()->current()) {
-            qWarning() << "RpcServer: Skipping import, project closed";
-            return;
+    fprintf(stderr, "BinHandler::handleImportClips: importing %lld files to folder %s\n", urlList.size(), folderId.toUtf8().constData());
+    fflush(stderr);
+
+    // Disable profile check dialog for RPC imports
+    pCore->bin()->shouldCheckProfile = false;
+
+    // Use createClipFromFile directly for each URL - this avoids qApp->processEvents()
+    // calls that cause event loop reentrancy and freezes when called from RPC handler
+    Fun undo = []() { return true; };
+    Fun redo = []() { return true; };
+
+    QJsonArray clipIds;
+    for (const QUrl &url : urlList) {
+        fprintf(stderr, "BinHandler::handleImportClips: importing %s\n", url.toLocalFile().toUtf8().constData());
+        fflush(stderr);
+
+        QString clipId = ClipCreator::createClipFromFile(url.toLocalFile(), folderId, pCore->projectItemModel(), undo, redo);
+
+        fprintf(stderr, "BinHandler::handleImportClips: createClipFromFile returned clipId=%s\n", clipId.toUtf8().constData());
+        fflush(stderr);
+
+        if (!clipId.isEmpty() && clipId != QLatin1String("-1")) {
+            clipIds.append(clipId);
         }
+    }
 
-        // Disable profile check dialog for RPC imports
-        pCore->bin()->shouldCheckProfile = false;
+    if (!clipIds.isEmpty()) {
+        pCore->pushUndo(undo, redo, i18n("Import clips via RPC"));
+    }
 
-        for (const QUrl &url : urlList) {
-            // Check again before each clip in case project closes during batch
-            if (pCore->closing || !pCore->projectManager()->current()) {
+    // Wait for all clips to finish loading to avoid deadlock from ClipLoadTask's BlockingQueuedConnection
+    // We must process events to allow the background tasks to complete their queued calls
+    fprintf(stderr, "BinHandler::handleImportClips: waiting for %lld clips to load...\n", clipIds.size());
+    fflush(stderr);
+
+    auto model = pCore->projectItemModel();
+    int waitCount = 0;
+    const int maxWait = 300; // 30 seconds max (100ms * 300)
+    bool allReady = false;
+
+    while (!allReady && waitCount < maxWait) {
+        allReady = true;
+        for (const QJsonValue &val : clipIds) {
+            auto clip = model->getClipByBinID(val.toString());
+            if (clip && clip->clipStatus() == FileStatus::StatusWaiting) {
+                allReady = false;
                 break;
             }
-            pCore->bin()->slotAddClipToProject(url);
         }
-        QCoreApplication::processEvents();
-    });
+        if (!allReady) {
+            qApp->processEvents(QEventLoop::AllEvents, 100);
+            waitCount++;
+        }
+    }
 
-    // Return immediately - client should poll bin.listClips or use notifications
-    return QJsonObject{{QStringLiteral("result"),
-                        QJsonObject{{QStringLiteral("importing"), true}, {QStringLiteral("count"), urlList.size()}, {QStringLiteral("urls"), urlStrings}}}};
+    if (allReady) {
+        fprintf(stderr, "BinHandler::handleImportClips: all clips ready after %d iterations\n", waitCount);
+    } else {
+        fprintf(stderr, "BinHandler::handleImportClips: TIMEOUT after %d iterations, some clips still loading\n", waitCount);
+    }
+    fflush(stderr);
+
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("clipIds"), clipIds}}}};
 }
 
 auto BinHandler::handleDeleteClip(const QJsonObject &params) -> QJsonObject
 {
+    fprintf(stderr, "BinHandler::handleDeleteClip START\n");
+    fflush(stderr);
+
     // Check if application is shutting down
     if (pCore->closing) {
         return makeApplicationClosingError();
@@ -382,19 +560,52 @@ auto BinHandler::handleDeleteClip(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Missing 'clipId' parameter")}}}};
     }
 
+    fprintf(stderr, "BinHandler::handleDeleteClip: deleting clipId=%s\n", clipId.toUtf8().constData());
+    fflush(stderr);
+
     auto clip = model->getClipByBinID(clipId);
     if (!clip) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::ClipNotFound},
                                                                  {QStringLiteral("message"), QStringLiteral("Clip not found: %1").arg(clipId)}}}};
     }
 
+    // Wait for clip to finish loading if needed (process events to allow ClipLoadTask to complete)
+    FileStatus::ClipStatus status = clip->clipStatus();
+    fprintf(stderr, "BinHandler::handleDeleteClip: clipStatus=%d\n", static_cast<int>(status));
+    fflush(stderr);
+
+    if (status == FileStatus::StatusWaiting) {
+        fprintf(stderr, "BinHandler::handleDeleteClip: clip still loading, waiting...\n");
+        fflush(stderr);
+
+        int waitCount = 0;
+        const int maxWait = 300; // 30 seconds max
+        while (clip->clipStatus() == FileStatus::StatusWaiting && waitCount < maxWait) {
+            qApp->processEvents(QEventLoop::AllEvents, 100);
+            waitCount++;
+        }
+
+        if (clip->clipStatus() == FileStatus::StatusWaiting) {
+            fprintf(stderr, "BinHandler::handleDeleteClip: TIMEOUT after %d iterations, proceeding anyway\n", waitCount);
+        } else {
+            fprintf(stderr, "BinHandler::handleDeleteClip: clip ready after %d iterations\n", waitCount);
+        }
+        fflush(stderr);
+    }
+
     Fun undo = []() { return true; };
     Fun redo = []() { return true; };
+
+    fprintf(stderr, "BinHandler::handleDeleteClip: calling requestBinClipDeletion\n");
+    fflush(stderr);
 
     if (!model->requestBinClipDeletion(clip, undo, redo)) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
                                                                  {QStringLiteral("message"), QStringLiteral("Failed to delete clip")}}}};
     }
+
+    fprintf(stderr, "BinHandler::handleDeleteClip: deleted successfully\n");
+    fflush(stderr);
 
     pCore->pushUndo(undo, redo, i18n("Delete bin clip"));
 
@@ -403,6 +614,9 @@ auto BinHandler::handleDeleteClip(const QJsonObject &params) -> QJsonObject
 
 auto BinHandler::handleDeleteClips(const QJsonObject &params) -> QJsonObject
 {
+    fprintf(stderr, "BinHandler::handleDeleteClips START\n");
+    fflush(stderr);
+
     // Check if application is shutting down
     if (pCore->closing) {
         return makeApplicationClosingError();
@@ -424,17 +638,68 @@ auto BinHandler::handleDeleteClips(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Missing 'clipIds' parameter")}}}};
     }
 
-    // Collect valid clips
+    fprintf(stderr, "BinHandler::handleDeleteClips: deleting %lld clips\n", static_cast<long long>(clipIds.size()));
+    fflush(stderr);
+
+    // First, collect all clips and wait for any that are still loading
     QList<std::shared_ptr<AbstractProjectItem>> clipsToDelete;
+    QList<std::shared_ptr<ProjectClip>> loadingClips;
+
     for (const QJsonValue &val : clipIds) {
         QString clipId = val.toString();
+        fprintf(stderr, "BinHandler::handleDeleteClips: checking clipId=%s\n", clipId.toUtf8().constData());
+        fflush(stderr);
+
         auto clip = model->getClipByBinID(clipId);
         if (clip) {
+            FileStatus::ClipStatus status = clip->clipStatus();
+            fprintf(stderr, "BinHandler::handleDeleteClips: clipStatus=%d\n", static_cast<int>(status));
+            fflush(stderr);
+
+            if (status == FileStatus::StatusWaiting) {
+                loadingClips.append(clip);
+            }
             clipsToDelete.append(clip);
         }
     }
 
+    // Wait for loading clips to become ready (process events to allow ClipLoadTask to complete)
+    if (!loadingClips.isEmpty()) {
+        fprintf(stderr, "BinHandler::handleDeleteClips: waiting for %lld loading clips...\n", static_cast<long long>(loadingClips.size()));
+        fflush(stderr);
+
+        int waitCount = 0;
+        const int maxWait = 300; // 30 seconds max
+        bool allReady = false;
+
+        while (!allReady && waitCount < maxWait) {
+            allReady = true;
+            for (const auto &clip : loadingClips) {
+                if (clip->clipStatus() == FileStatus::StatusWaiting) {
+                    allReady = false;
+                    break;
+                }
+            }
+            if (!allReady) {
+                qApp->processEvents(QEventLoop::AllEvents, 100);
+                waitCount++;
+            }
+        }
+
+        if (allReady) {
+            fprintf(stderr, "BinHandler::handleDeleteClips: all clips ready after %d iterations\n", waitCount);
+        } else {
+            fprintf(stderr, "BinHandler::handleDeleteClips: TIMEOUT after %d iterations, proceeding anyway\n", waitCount);
+        }
+        fflush(stderr);
+    }
+
+    fprintf(stderr, "BinHandler::handleDeleteClips: %lld clips to delete\n", static_cast<long long>(clipsToDelete.size()));
+    fflush(stderr);
+
     if (clipsToDelete.isEmpty()) {
+        fprintf(stderr, "BinHandler::handleDeleteClips: returning early (no clips found)\n");
+        fflush(stderr);
         return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("count"), 0}}}};
     }
 
@@ -443,10 +708,18 @@ auto BinHandler::handleDeleteClips(const QJsonObject &params) -> QJsonObject
     int deletedCount = 0;
 
     for (const auto &clip : clipsToDelete) {
+        fprintf(stderr, "BinHandler::handleDeleteClips: calling requestBinClipDeletion\n");
+        fflush(stderr);
+
         if (model->requestBinClipDeletion(clip, undo, redo)) {
             deletedCount++;
+            fprintf(stderr, "BinHandler::handleDeleteClips: deleted successfully\n");
+            fflush(stderr);
         }
     }
+
+    fprintf(stderr, "BinHandler::handleDeleteClips: deleted %d clips\n", deletedCount);
+    fflush(stderr);
 
     if (deletedCount > 0) {
         pCore->pushUndo(undo, redo, i18n("Delete bin clips"));
@@ -578,6 +851,12 @@ auto BinHandler::handleRenameItem(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Item not found: %1").arg(itemId)}}}};
     }
 
+    // Check if item is still loading - if so, return error to avoid deadlock
+    if (item->clipStatus() == FileStatus::StatusWaiting) {
+        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
+                                                                 {QStringLiteral("message"), QStringLiteral("Item is still loading, try again later")}}}};
+    }
+
     bool success = item->rename(name, 0);
 
     if (!success) {
@@ -620,6 +899,12 @@ auto BinHandler::handleMoveItem(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Item not found: %1").arg(itemId)}}}};
     }
 
+    // Check if item is still loading - if so, return error to avoid deadlock
+    if (item->clipStatus() == FileStatus::StatusWaiting) {
+        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
+                                                                 {QStringLiteral("message"), QStringLiteral("Item is still loading, try again later")}}}};
+    }
+
     auto currentParent = item->parent();
     QString oldParentId = currentParent ? currentParent->clipId() : QString();
 
@@ -658,6 +943,11 @@ auto BinHandler::handleGetClipMarkers(const QJsonObject &params) -> QJsonObject
     if (!clip) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::ClipNotFound},
                                                                  {QStringLiteral("message"), QStringLiteral("Clip not found: %1").arg(clipId)}}}};
+    }
+
+    // Check if clip is still loading - if so, return empty markers to avoid deadlock
+    if (clip->clipStatus() == FileStatus::StatusWaiting) {
+        return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("markers"), QJsonArray()}, {QStringLiteral("loading"), true}}}};
     }
 
     auto markerModel = clip->markerModel();
@@ -710,13 +1000,38 @@ auto BinHandler::handleAddClipMarker(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Missing 'position' parameter")}}}};
     }
 
+    auto clip = model->getClipByBinID(clipId);
+    if (!clip) {
+        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::ClipNotFound},
+                                                                 {QStringLiteral("message"), QStringLiteral("Clip not found: %1").arg(clipId)}}}};
+    }
+
+    // Check if clip is still loading - if so, return error to avoid deadlock
+    if (clip->clipStatus() == FileStatus::StatusWaiting) {
+        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
+                                                                 {QStringLiteral("message"), QStringLiteral("Clip is still loading, try again later")}}}};
+    }
+
+    auto markerModel = clip->markerModel();
+    if (!markerModel) {
+        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
+                                                                 {QStringLiteral("message"), QStringLiteral("No marker model for clip")}}}};
+    }
+
     QString comment = params.value(QStringLiteral("comment")).toString();
+    if (comment.isEmpty()) {
+        comment = i18n("Marker");
+    }
     int type = params.value(QStringLiteral("type")).toInt(-1);
 
-    QMap<int, QString> markersData;
-    markersData.insert(position, comment);
+    // Convert position to GenTime and add marker directly
+    GenTime pos(position, pCore->getCurrentFps());
+    bool success = markerModel->addMarker(pos, comment, type);
 
-    pCore->bin()->addClipMarker(clipId, markersData, type);
+    if (!success) {
+        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
+                                                                 {QStringLiteral("message"), QStringLiteral("Failed to add marker")}}}};
+    }
 
     // Return position as markerId (markers are identified by position in Kdenlive)
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("markerId"), position}}}};
@@ -759,6 +1074,12 @@ auto BinHandler::handleDeleteClipMarker(const QJsonObject &params) -> QJsonObjec
     if (!clip) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::ClipNotFound},
                                                                  {QStringLiteral("message"), QStringLiteral("Clip not found: %1").arg(clipId)}}}};
+    }
+
+    // Check if clip is still loading - if so, return error to avoid deadlock
+    if (clip->clipStatus() == FileStatus::StatusWaiting) {
+        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
+                                                                 {QStringLiteral("message"), QStringLiteral("Clip is still loading, try again later")}}}};
     }
 
     auto markerModel = clip->markerModel();
