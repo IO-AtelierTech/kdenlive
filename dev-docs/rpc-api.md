@@ -477,6 +477,9 @@ Import multiple media files.
 **Limitations:**
 - Files are imported sequentially (one at a time) rather than concurrently due to Kdenlive's clip loading architecture.
 - **Do not import the same file multiple times** in a single call - this causes clips to hang in loading state. Use `bin.importClip` separately or import different files.
+- Clip loading may occasionally timeout (5s per clip). Check the `loading` field in clip info to verify readiness.
+
+**Note on testing:** Running many import operations in rapid succession may cause Kdenlive's task system to accumulate stuck threads, leading to eventual deadlocks. Individual tests are reliable; full test suites may need delays between tests or process restarts.
 
 #### bin.deleteClip
 Delete a single clip from bin.
