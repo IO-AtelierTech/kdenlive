@@ -481,17 +481,35 @@ auto BinHandler::handleImportClips(const QJsonObject &params) -> QJsonObject
     Fun redo = []() { return true; };
 
     QJsonArray clipIds;
+    auto model = pCore->projectItemModel();
+
+    // Import clips sequentially - wait for each to finish before importing next
+    // Concurrent import doesn't work because multiple ClipLoadTasks block each other
     for (const QUrl &url : urlList) {
         fprintf(stderr, "BinHandler::handleImportClips: importing %s\n", url.toLocalFile().toUtf8().constData());
         fflush(stderr);
 
-        QString clipId = ClipCreator::createClipFromFile(url.toLocalFile(), folderId, pCore->projectItemModel(), undo, redo);
+        QString clipId = ClipCreator::createClipFromFile(url.toLocalFile(), folderId, model, undo, redo);
 
         fprintf(stderr, "BinHandler::handleImportClips: createClipFromFile returned clipId=%s\n", clipId.toUtf8().constData());
         fflush(stderr);
 
         if (!clipId.isEmpty() && clipId != QLatin1String("-1")) {
             clipIds.append(clipId);
+
+            // Wait for this clip to finish loading before importing the next
+            auto clip = model->getClipByBinID(clipId);
+            if (clip) {
+                int waitCount = 0;
+                const int maxWait = 300; // 30 seconds max per clip
+                while (clip->clipStatus() == FileStatus::StatusWaiting && waitCount < maxWait) {
+                    qApp->processEvents(QEventLoop::AllEvents, 100);
+                    waitCount++;
+                }
+                fprintf(stderr, "BinHandler::handleImportClips: clip %s ready after %d iterations, status=%d\n", clipId.toUtf8().constData(), waitCount,
+                        static_cast<int>(clip->clipStatus()));
+                fflush(stderr);
+            }
         }
     }
 
@@ -499,36 +517,7 @@ auto BinHandler::handleImportClips(const QJsonObject &params) -> QJsonObject
         pCore->pushUndo(undo, redo, i18n("Import clips via RPC"));
     }
 
-    // Wait for all clips to finish loading to avoid deadlock from ClipLoadTask's BlockingQueuedConnection
-    // We must process events to allow the background tasks to complete their queued calls
-    fprintf(stderr, "BinHandler::handleImportClips: waiting for %lld clips to load...\n", clipIds.size());
-    fflush(stderr);
-
-    auto model = pCore->projectItemModel();
-    int waitCount = 0;
-    const int maxWait = 300; // 30 seconds max (100ms * 300)
-    bool allReady = false;
-
-    while (!allReady && waitCount < maxWait) {
-        allReady = true;
-        for (const QJsonValue &val : clipIds) {
-            auto clip = model->getClipByBinID(val.toString());
-            if (clip && clip->clipStatus() == FileStatus::StatusWaiting) {
-                allReady = false;
-                break;
-            }
-        }
-        if (!allReady) {
-            qApp->processEvents(QEventLoop::AllEvents, 100);
-            waitCount++;
-        }
-    }
-
-    if (allReady) {
-        fprintf(stderr, "BinHandler::handleImportClips: all clips ready after %d iterations\n", waitCount);
-    } else {
-        fprintf(stderr, "BinHandler::handleImportClips: TIMEOUT after %d iterations, some clips still loading\n", waitCount);
-    }
+    fprintf(stderr, "BinHandler::handleImportClips: all %lld clips imported\n", clipIds.size());
     fflush(stderr);
 
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("clipIds"), clipIds}}}};
@@ -569,27 +558,22 @@ auto BinHandler::handleDeleteClip(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Clip not found: %1").arg(clipId)}}}};
     }
 
-    // Wait for clip to finish loading if needed (process events to allow ClipLoadTask to complete)
+    // Cancel any pending jobs for this clip before deletion to avoid deadlock
     FileStatus::ClipStatus status = clip->clipStatus();
     fprintf(stderr, "BinHandler::handleDeleteClip: clipStatus=%d\n", static_cast<int>(status));
     fflush(stderr);
 
     if (status == FileStatus::StatusWaiting) {
-        fprintf(stderr, "BinHandler::handleDeleteClip: clip still loading, waiting...\n");
+        fprintf(stderr, "BinHandler::handleDeleteClip: clip still loading, canceling jobs...\n");
         fflush(stderr);
 
-        int waitCount = 0;
-        const int maxWait = 300; // 30 seconds max
-        while (clip->clipStatus() == FileStatus::StatusWaiting && waitCount < maxWait) {
-            qApp->processEvents(QEventLoop::AllEvents, 100);
-            waitCount++;
-        }
+        // Cancel all pending jobs for this clip
+        pCore->taskManager.discardJobs(ObjectId(KdenliveObjectType::BinClip, clipId.toInt(), QUuid()), AbstractTask::NOJOBTYPE, true);
 
-        if (clip->clipStatus() == FileStatus::StatusWaiting) {
-            fprintf(stderr, "BinHandler::handleDeleteClip: TIMEOUT after %d iterations, proceeding anyway\n", waitCount);
-        } else {
-            fprintf(stderr, "BinHandler::handleDeleteClip: clip ready after %d iterations\n", waitCount);
-        }
+        // Process events to allow job cancellation to complete
+        qApp->processEvents(QEventLoop::AllEvents, 100);
+
+        fprintf(stderr, "BinHandler::handleDeleteClip: jobs canceled, proceeding with deletion\n");
         fflush(stderr);
     }
 
@@ -663,34 +647,23 @@ auto BinHandler::handleDeleteClips(const QJsonObject &params) -> QJsonObject
         }
     }
 
-    // Wait for loading clips to become ready (process events to allow ClipLoadTask to complete)
+    // Cancel pending jobs for any loading clips to avoid deadlock during deletion
     if (!loadingClips.isEmpty()) {
-        fprintf(stderr, "BinHandler::handleDeleteClips: waiting for %lld loading clips...\n", static_cast<long long>(loadingClips.size()));
+        fprintf(stderr, "BinHandler::handleDeleteClips: canceling jobs for %lld loading clips...\n", static_cast<long long>(loadingClips.size()));
         fflush(stderr);
 
-        int waitCount = 0;
-        const int maxWait = 300; // 30 seconds max
-        bool allReady = false;
+        for (const auto &clip : loadingClips) {
+            QString clipIdStr = clip->clipId();
+            fprintf(stderr, "BinHandler::handleDeleteClips: canceling jobs for clip %s\n", clipIdStr.toUtf8().constData());
+            fflush(stderr);
 
-        while (!allReady && waitCount < maxWait) {
-            allReady = true;
-            for (const auto &clip : loadingClips) {
-                if (clip->clipStatus() == FileStatus::StatusWaiting) {
-                    allReady = false;
-                    break;
-                }
-            }
-            if (!allReady) {
-                qApp->processEvents(QEventLoop::AllEvents, 100);
-                waitCount++;
-            }
+            pCore->taskManager.discardJobs(ObjectId(KdenliveObjectType::BinClip, clipIdStr.toInt(), QUuid()), AbstractTask::NOJOBTYPE, true);
+
+            // Process events after each cancellation to prevent blocking
+            qApp->processEvents(QEventLoop::AllEvents, 100);
         }
 
-        if (allReady) {
-            fprintf(stderr, "BinHandler::handleDeleteClips: all clips ready after %d iterations\n", waitCount);
-        } else {
-            fprintf(stderr, "BinHandler::handleDeleteClips: TIMEOUT after %d iterations, proceeding anyway\n", waitCount);
-        }
+        fprintf(stderr, "BinHandler::handleDeleteClips: jobs canceled, proceeding with deletion\n");
         fflush(stderr);
     }
 
