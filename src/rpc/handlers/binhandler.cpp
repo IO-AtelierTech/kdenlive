@@ -403,16 +403,16 @@ auto BinHandler::handleImportClip(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Failed to import clip")}}}};
     }
 
-    // No pushUndo - RPC clients can use deleteClip to undo if needed
+    // Wait for clip to finish loading (timeout configurable, default 10s)
+    // Clients can set timeout=0 to return immediately without waiting
+    int timeoutMs = params.value(QStringLiteral("timeout")).toInt(10000);
+    int maxWait = timeoutMs / 100; // Convert to iterations (100ms each)
 
-    // Wait for clip to finish loading to avoid deadlock from ClipLoadTask's BlockingQueuedConnection
-    // We must process events to allow the background task to complete its queued calls
     auto clip = pCore->projectItemModel()->getClipByBinID(clipId);
-    if (clip) {
-        fprintf(stderr, "BinHandler::handleImportClip: waiting for clip to load...\n");
+    if (clip && maxWait > 0) {
+        fprintf(stderr, "BinHandler::handleImportClip: waiting for clip to load (timeout=%dms)...\n", timeoutMs);
         fflush(stderr);
         int waitCount = 0;
-        const int maxWait = 50; // 5 seconds max (100ms * 50)
         while (clip->clipStatus() == FileStatus::StatusWaiting && waitCount < maxWait) {
             qApp->processEvents(QEventLoop::AllEvents, 100);
             waitCount++;
@@ -471,6 +471,10 @@ auto BinHandler::handleImportClips(const QJsonObject &params) -> QJsonObject
     fprintf(stderr, "BinHandler::handleImportClips: importing %lld files to folder %s\n", urlList.size(), folderId.toUtf8().constData());
     fflush(stderr);
 
+    // Timeout per clip (configurable, default 10s, set 0 to skip waiting)
+    int timeoutMs = params.value(QStringLiteral("timeout")).toInt(10000);
+    int maxWait = timeoutMs / 100;
+
     // Import each clip using the exact same code path as handleImportClip
     QJsonArray clipIds;
 
@@ -495,11 +499,10 @@ auto BinHandler::handleImportClips(const QJsonObject &params) -> QJsonObject
 
         clipIds.append(clipId);
 
-        // Wait for clip to finish loading (same as handleImportClip)
+        // Wait for clip to finish loading
         auto clip = pCore->projectItemModel()->getClipByBinID(clipId);
-        if (clip) {
+        if (clip && maxWait > 0) {
             int waitCount = 0;
-            const int maxWait = 50; // 5 seconds max per clip
             while (clip->clipStatus() == FileStatus::StatusWaiting && waitCount < maxWait) {
                 qApp->processEvents(QEventLoop::AllEvents, 100);
                 waitCount++;

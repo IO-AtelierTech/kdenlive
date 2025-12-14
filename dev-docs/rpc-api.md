@@ -463,23 +463,35 @@ List folders in project bin.
 #### bin.importClip
 Import a single media file.
 
-**Request:** `{"url": "/path/to/video.mp4", "folderId": "2"}`
+**Request:** `{"url": "/path/to/video.mp4", "folderId": "2", "timeout": 10000}`
 **Response:** `{"clipId": "5"}`
 
-The method waits for the clip to finish loading before returning. This ensures the clip is ready for immediate use.
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| url | string | required | Path to the media file |
+| folderId | string | root | Target folder ID |
+| timeout | int | 10000 | Max wait time in ms for clip to load (0 = don't wait) |
+
+The method waits for the clip to finish loading before returning. For large files, increase the timeout or set to 0 and poll `bin.getClipInfo` to check the `loading` field.
 
 #### bin.importClips
 Import multiple media files.
 
-**Request:** `{"urls": ["/path/to/video1.mp4", "/path/to/video2.mp4"], "folderId": "2"}`
+**Request:** `{"urls": ["/path/to/video1.mp4", "/path/to/video2.mp4"], "folderId": "2", "timeout": 10000}`
 **Response:** `{"clipIds": ["5", "6"]}`
 
-**Limitations:**
-- Files are imported sequentially (one at a time) rather than concurrently due to Kdenlive's clip loading architecture.
-- **Do not import the same file multiple times** in a single call - this causes clips to hang in loading state. Use `bin.importClip` separately or import different files.
-- Clip loading may occasionally timeout (5s per clip). Check the `loading` field in clip info to verify readiness.
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| urls | string[] | required | Paths to media files |
+| folderId | string | root | Target folder ID |
+| timeout | int | 10000 | Max wait time in ms per clip (0 = don't wait) |
 
-**Note on testing:** Running many import operations in rapid succession may cause Kdenlive's task system to accumulate stuck threads, leading to eventual deadlocks. Individual tests are reliable; full test suites may need delays between tests or process restarts.
+**Limitations:**
+- Files are imported sequentially (one at a time) due to Kdenlive's clip loading architecture.
+- **Do not import the same file multiple times** in a single call - causes clips to hang. Use different files.
+- For large files, increase timeout or set to 0 and poll `bin.getClipInfo`.
+
+**Note on testing:** Rapid import operations may accumulate stuck threads in Kdenlive's task system. Use `timeout: 0` for tests and verify clip status separately.
 
 #### bin.deleteClip
 Delete a single clip from bin.
