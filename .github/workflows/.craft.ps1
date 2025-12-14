@@ -9,6 +9,17 @@
 #   .craft.ps1 -c --install-deps kdenlive # Install dependencies
 #   .craft.ps1 -c --package kdenlive      # Build and package
 
+# On Linux, remove Android environment variables that confuse CraftMaster
+# CraftMaster's Config.isAndroid() checks "ANDROID_NDK" in os.environ
+# Even empty strings make the key exist, so we must fully remove them
+if ($IsLinux) {
+    Remove-Item Env:ANDROID_NDK -ErrorAction SilentlyContinue
+    Remove-Item Env:ANDROID_NDK_HOME -ErrorAction SilentlyContinue
+    Remove-Item Env:ANDROID_NDK_ROOT -ErrorAction SilentlyContinue
+    Remove-Item Env:ANDROID_SDK_ROOT -ErrorAction SilentlyContinue
+    Remove-Item Env:ANDROID_HOME -ErrorAction SilentlyContinue
+}
+
 # Determine Python executable
 if ($IsWindows) {
     $python = (python -c "import sys; print(sys.executable)")

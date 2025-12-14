@@ -83,12 +83,14 @@ jobs:
       # -----------------------------------------------------------------------
       # Clear Android environment (Linux only)
       # GitHub runners have Android SDK which confuses CraftMaster's platform detection
+      # Note: We move the SDK but DON'T set env vars to empty - that's worse than not setting them
+      # The actual unsetting happens in PowerShell steps via Remove-Item Env:VAR
       # -----------------------------------------------------------------------
       - name: Clear Android environment
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          echo "Removing Android SDK paths that confuse CraftMaster..."
+          echo "Moving Android SDK out of the way to prevent path-based detection..."
           # Move Android SDK out of the way (can't delete, might be needed by other jobs)
           if [ -d "$ANDROID_HOME" ]; then
             echo "Moving $ANDROID_HOME to /tmp/android-sdk-backup"
@@ -97,12 +99,8 @@ jobs:
           if [ -d "$ANDROID_SDK_ROOT" ] && [ "$ANDROID_SDK_ROOT" != "$ANDROID_HOME" ]; then
             sudo mv "$ANDROID_SDK_ROOT" /tmp/android-sdk-root-backup || true
           fi
-          # Also unset the environment variables
-          echo "ANDROID_HOME=" >> $GITHUB_ENV
-          echo "ANDROID_NDK=" >> $GITHUB_ENV
-          echo "ANDROID_NDK_HOME=" >> $GITHUB_ENV
-          echo "ANDROID_NDK_ROOT=" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=" >> $GITHUB_ENV
+          # Note: Do NOT set ANDROID_* vars to empty via GITHUB_ENV - that makes them exist
+          # as empty strings, and Python's "VAR" in os.environ returns True for empty strings
 
       # -----------------------------------------------------------------------
       # Install Linux build dependencies
