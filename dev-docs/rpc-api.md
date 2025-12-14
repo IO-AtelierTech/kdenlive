@@ -474,7 +474,9 @@ Import multiple media files.
 **Request:** `{"urls": ["/path/to/video1.mp4", "/path/to/video2.mp4"], "folderId": "2"}`
 **Response:** `{"clipIds": ["5", "6"]}`
 
-**Limitation:** Files are imported sequentially (one at a time) rather than concurrently. This is due to Kdenlive's clip loading architecture where multiple simultaneous ClipLoadTasks can deadlock. While slower than parallel imports, this ensures reliable operation.
+**Limitations:**
+- Files are imported sequentially (one at a time) rather than concurrently due to Kdenlive's clip loading architecture.
+- **Do not import the same file multiple times** in a single call - this causes clips to hang in loading state. Use `bin.importClip` separately or import different files.
 
 #### bin.deleteClip
 Delete a single clip from bin.
