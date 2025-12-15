@@ -26,5 +26,13 @@ kde-ci-reports/*
 
 # Development planning docs (not for upstream)
 CLAUDE.md
-QA-STRATEGY.md
 TODO.md.bak
+
+# Docker build output
+docker/build-output/
+
+# Git worktrees (for parallel development)
+.worktrees/
+
+# Octopus parallel development
+.octopus/

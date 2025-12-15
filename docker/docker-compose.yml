@@ -1,0 +1,81 @@
+# Kdenlive Docker Build Environment
+# Usage: cd docker && docker compose up builder
+# Or use Justfile: just build
+
+services:
+  builder:
+    build:
+      context: .
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    volumes:
+      - ..:/src
+      - ./build-output:/build
+      - ccache:/ccache
+    environment:
+      - CCACHE_DIR=/ccache
+    working_dir: /src
+
+  # Interactive shell for debugging
+  shell:
+    build:
+      context: .
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    volumes:
+      - ..:/src
+      - ./build-output:/build
+      - ccache:/ccache
+    environment:
+      - CCACHE_DIR=/ccache
+    working_dir: /src
+    stdin_open: true
+    tty: true
+    entrypoint: /bin/bash
+
+  # Lint check only (faster)
+  lint:
+    build:
+      context: .
+    volumes:
+      - ..:/src:ro
+    working_dir: /src
+    entrypoint: ["sh", "-c"]
+    command: ["find src/rpc -name '*.cpp' -o -name '*.h' | xargs clang-format --dry-run --Werror && echo '=== Lint passed! ==='"]
+
+  # Run tests
+  test:
+    build:
+      context: .
+    volumes:
+      - ..:/src:ro
+      - ./build-output:/build:ro
+    working_dir: /build
+    entrypoint: ["sh", "-c"]
+    command: ["ctest -R rpctest --output-on-failure"]
+
+  # GDB debugging session
+  gdb:
+    build:
+      context: .
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    volumes:
+      - ..:/src
+      - ./build-output:/build
+      - ccache:/ccache
+    environment:
+      - CCACHE_DIR=/ccache
+      - DISPLAY=${DISPLAY:-:0}
+    working_dir: /src
+    stdin_open: true
+    tty: true
+    privileged: true
+    entrypoint: ["gdb", "/build/bin/kdenlive"]
+    network_mode: host
+
+volumes:
+  ccache:
