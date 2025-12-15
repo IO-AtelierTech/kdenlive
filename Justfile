@@ -200,6 +200,8 @@ tentacle-spawn id:
     echo "  Branch: $branch"
     echo "  Path: $worktree_path"
     git worktree add -b "$branch" "$worktree_path" feature/websocket
+    # Extract tasks
+    tasks=$(awk '/^### {{id}}:/,/^---$/' .octopus/master-todo.md | awk '/^\*\*Tasks:\*\*/,/^\*\*|^---/' | grep -E '^[0-9]+\.' | sed 's/^/- [ ] /')
     # Create TODO.md in worktree
     cat > "$worktree_path/TODO.md" << EOF
 # Tentacle: {{id}}
@@ -208,7 +210,7 @@ tentacle-spawn id:
 **Scope:** $scope
 
 ## Tasks
-$(awk '/^### {{id}}:/,/^---$/' .octopus/master-todo.md | awk '/^\*\*Tasks:\*\*/,/^\*\*|^---/' | grep -E '^[0-9]+\.' | sed 's/^/- [ ] /')
+$tasks
 
 ---
 *Auto-generated from .octopus/master-todo.md*
