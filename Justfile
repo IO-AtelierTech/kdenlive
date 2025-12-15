@@ -189,7 +189,8 @@ tentacle-spawn id:
     branch="tentacle/{{id}}"
     if [ -d "$worktree_path" ]; then
         echo "Worktree already exists at $worktree_path"
-        echo "To enter: cd $worktree_path"
+        echo "Resuming Claude session..."
+        cd "$worktree_path" && claude "tentacle-dev"
         exit 0
     fi
     echo "Creating tentacle worktree..."
@@ -201,22 +202,22 @@ tentacle-spawn id:
     git worktree add -b "$branch" "$worktree_path" feature/websocket
     # Create TODO.md in worktree
     cat > "$worktree_path/TODO.md" << EOF
-    # Tentacle: {{id}}
-    ## $desc
+# Tentacle: {{id}}
+## $desc
 
-    **Scope:** $scope
+**Scope:** $scope
 
-    ## Tasks
-    $(awk '/^### {{id}}:/,/^---$/' .octopus/master-todo.md | awk '/^\*\*Tasks:\*\*/,/^\*\*|^---/' | grep -E '^[0-9]+\.' | sed 's/^/- [ ] /')
+## Tasks
+$(awk '/^### {{id}}:/,/^---$/' .octopus/master-todo.md | awk '/^\*\*Tasks:\*\*/,/^\*\*|^---/' | grep -E '^[0-9]+\.' | sed 's/^/- [ ] /')
 
-    ---
-    *Auto-generated from .octopus/master-todo.md*
-    EOF
+---
+*Auto-generated from .octopus/master-todo.md*
+EOF
     # Create marker file
     touch "$worktree_path/.octopus-tentacle"
     echo ""
-    echo "Tentacle spawned! To start working:"
-    echo "  cd $worktree_path"
+    echo "Tentacle spawned! Starting Claude session..."
+    cd "$worktree_path" && claude "tentacle-dev"
 
 # Merge a completed tentacle back to feature/websocket
 tentacle-merge id:
