@@ -165,79 +165,13 @@ tentacle-info id:
     fi
     awk '/^### {{id}}:/,/^---$/' .octopus/master-todo.md | head -n -1
 
-# Spawn a tentacle session (creates worktree from spec in master-todo.md)
+# Spawn a tentacle session (uses shared script from ~/.claude/skills/octopus-dev)
 tentacle-spawn id:
-    #!/usr/bin/env bash
-    set -e
-    if [ ! -f .octopus/master-todo.md ]; then
-        echo "Error: .octopus/master-todo.md not found"
-        exit 1
-    fi
-    # Check if tentacle spec exists
-    if ! grep -q "^### {{id}}:" .octopus/master-todo.md; then
-        echo "Error: Tentacle '{{id}}' not found in master-todo.md"
-        echo "Available tentacles:"
-        grep -E '^### t[0-9]+-' .octopus/master-todo.md | sed 's/### /  /'
-        exit 1
-    fi
-    # Extract description from header line
-    desc=$(grep "^### {{id}}:" .octopus/master-todo.md | sed 's/^### {{id}}: //')
-    # Extract scope (lines between **Scope:** and next **)
-    scope=$(awk '/^### {{id}}:/,/^---$/' .octopus/master-todo.md | awk '/^\*\*Scope:\*\*$/,/^\*\*[^S]/' | grep -E '^- ' | sed 's/^- //' | tr '\n' ',' | sed 's/,$//')
-    # Extract tasks
-    tasks=$(awk '/^### {{id}}:/,/^---$/' .octopus/master-todo.md | awk '/^\*\*Tasks:\*\*$/,/^\*\*[^T]|^$/' | grep -E '^[0-9]+\.' | sed 's/^/- [ ] /')
-    # Create worktree
-    worktree_path=".worktrees/{{id}}"
-    branch="tentacle/{{id}}"
-    if [ -d "$worktree_path" ]; then
-        echo "Worktree already exists at $worktree_path"
-        echo "Resuming Claude session..."
-        cd "$worktree_path" && claude "tentacle-dev"
-        exit 0
-    fi
-    echo "Creating tentacle worktree..."
-    echo "  ID: {{id}}"
-    echo "  Description: $desc"
-    echo "  Scope: $scope"
-    echo "  Branch: $branch"
-    echo "  Path: $worktree_path"
-    git worktree add -b "$branch" "$worktree_path" feature/websocket
-    # Create TODO.md in worktree
-    {
-        echo "# Tentacle: {{id}}"
-        echo "## $desc"
-        echo ""
-        echo "**Scope:** $scope"
-        echo ""
-        echo "## Tasks"
-        echo "$tasks"
-        echo ""
-        echo "---"
-        echo "*Auto-generated from .octopus/master-todo.md*"
-    } > "$worktree_path/TODO.md"
-    # Create marker file
-    touch "$worktree_path/.octopus-tentacle"
-    echo ""
-    echo "Tentacle spawned! Starting Claude session..."
-    cd "$worktree_path" && claude "tentacle-dev"
+    bash ~/.claude/skills/octopus-dev/scripts/spawn-tentacle.sh {{id}}
 
 # Merge a completed tentacle back to feature/websocket
 tentacle-merge id:
-    #!/usr/bin/env bash
-    set -e
-    worktree_path=".worktrees/{{id}}"
-    branch="tentacle/{{id}}"
-    if [ ! -d "$worktree_path" ]; then
-        echo "Error: Worktree not found at $worktree_path"
-        exit 1
-    fi
-    echo "Merging tentacle {{id}}..."
-    git checkout feature/websocket
-    git merge --no-ff "$branch" -m "Merge tentacle/{{id}}"
-    echo "Removing worktree..."
-    git worktree remove "$worktree_path"
-    git branch -d "$branch"
-    echo "Tentacle {{id}} merged and cleaned up."
+    bash ~/.claude/skills/octopus-dev/scripts/merge-tentacle.sh {{id}}
 
 # Remove a tentacle worktree without merging
 tentacle-remove id:
