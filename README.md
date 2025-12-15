@@ -51,6 +51,7 @@ asyncio.run(main())
 - **API Reference**: [`dev-docs/rpc/api.md`](dev-docs/rpc/api.md)
 - **Schema (Source of Truth)**: [`src/rpc/rpc-schema.json5`](src/rpc/rpc-schema.json5)
 - **Implementation Status**: [`TODO.md`](TODO.md)
+- **Python Client & MCP Server**: [`IO-AtelierTech/kdenlive-automation`](https://github.com/IO-AtelierTech/kdenlive-automation)
 
 ### Configuration
 
