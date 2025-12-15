@@ -389,6 +389,17 @@ auto TimelineHandler::handleInsertClip(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Missing or invalid 'trackId' parameter")}}}};
     }
 
+    auto model = controller->getModel();
+    if (!model) {
+        return makeNoTimelineError();
+    }
+
+    // Verify the track exists
+    if (!model->isTrack(trackId)) {
+        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::TrackNotFound},
+                                                                 {QStringLiteral("message"), QStringLiteral("Track not found: %1").arg(trackId)}}}};
+    }
+
     int position = params.value(QStringLiteral("position")).toInt(0);
 
     // Verify the bin clip exists before insertion
@@ -398,8 +409,36 @@ auto TimelineHandler::handleInsertClip(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Bin clip not found: %1").arg(binId)}}}};
     }
 
+    // Determine if we need to adjust the binId for track type compatibility
+    QString adjustedBinId = binId;
+    bool isAudioTrack = model->isAudioTrack(trackId);
+    bool clipHasAudio = binClip->hasAudio();
+    bool clipHasVideo = binClip->hasVideo();
+
+    // If inserting an AV clip to a specific track type, force single-stream insertion
+    // to avoid the complex AV split logic that can fail when audio/video targets aren't available
+    if (clipHasAudio && clipHasVideo) {
+        // Clip has both audio and video
+        if (isAudioTrack) {
+            // Insert audio only to audio track
+            adjustedBinId = QStringLiteral("A") + binId;
+        } else {
+            // Insert video only to video track
+            // This bypasses the AV split logic that might fail without proper targets
+            adjustedBinId = QStringLiteral("V") + binId;
+        }
+    } else if (clipHasAudio && !clipHasVideo && !isAudioTrack) {
+        // Audio-only clip on video track - this will fail
+        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
+                                                                 {QStringLiteral("message"), QStringLiteral("Cannot insert audio-only clip on video track")}}}};
+    } else if (clipHasVideo && !clipHasAudio && isAudioTrack) {
+        // Video-only clip on audio track - this will fail
+        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
+                                                                 {QStringLiteral("message"), QStringLiteral("Cannot insert video-only clip on audio track")}}}};
+    }
+
     // insertClip expects a bin ID string (e.g., "4" or "A4/10/50"), not XML
-    int clipId = controller->insertClip(trackId, position, binId, true, true, false);
+    int clipId = controller->insertClip(trackId, position, adjustedBinId, true, true, false);
 
     if (clipId == -1) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
@@ -407,7 +446,6 @@ auto TimelineHandler::handleInsertClip(const QJsonObject &params) -> QJsonObject
     }
 
     // Check for linked A/V clips (Kdenlive auto-creates linked audio/video clips)
-    auto model = controller->getModel();
     QJsonObject result{{QStringLiteral("clipId"), clipId}};
 
     std::unordered_set<int> groupElements = model->getGroupElements(clipId);
@@ -582,25 +620,21 @@ auto TimelineHandler::handleDeleteClips(const QJsonObject &params) -> QJsonObjec
                                                                  {QStringLiteral("message"), QStringLiteral("Missing 'clipIds' parameter")}}}};
     }
 
-    QJsonArray deleted;
-    QJsonArray failed;
+    int deletedCount = 0;
 
     for (const QJsonValue &val : clipIds) {
         int clipId = val.toInt(-1);
         if (clipId < 0 || !model->isClip(clipId)) {
-            failed.append(clipId);
             continue;
         }
 
         bool success = model->requestItemDeletion(clipId, true);
         if (success) {
-            deleted.append(clipId);
-        } else {
-            failed.append(clipId);
+            deletedCount++;
         }
     }
 
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("deleted"), deleted}, {QStringLiteral("failed"), failed}}}};
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("count"), deletedCount}}}};
 }
 
 auto TimelineHandler::handleResizeClip(const QJsonObject &params) -> QJsonObject
@@ -640,10 +674,12 @@ auto TimelineHandler::handleResizeClip(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Clip not found: %1").arg(clipId)}}}};
     }
 
-    // Get current in/out
+    // Get current clip state
     auto currentInOut = model->getClipInOut(clipId);
     int currentIn = currentInOut.first;
     int currentOut = currentInOut.second;
+    int originalPosition = model->getClipPosition(clipId);
+    int trackId = model->getClipTrackId(clipId);
 
     // Check for new in/out values
     bool hasIn = params.contains(QStringLiteral("in"));
@@ -656,17 +692,45 @@ auto TimelineHandler::handleResizeClip(const QJsonObject &params) -> QJsonObject
 
     int newIn = hasIn ? params.value(QStringLiteral("in")).toInt() : currentIn;
     int newOut = hasOut ? params.value(QStringLiteral("out")).toInt() : currentOut;
-    int newDuration = newOut - newIn + 1;
 
-    // Resize the clip
-    int result = model->requestItemResize(clipId, newDuration, !hasIn, true);
-
-    if (result == -1) {
-        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
-                                                                 {QStringLiteral("message"), QStringLiteral("Failed to resize clip")}}}};
+    // Calculate new duration (API uses exclusive out: duration = out - in)
+    int newDuration = newOut - newIn;
+    if (newDuration <= 0) {
+        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
+                                                                 {QStringLiteral("message"), QStringLiteral("Invalid in/out range")}}}};
     }
 
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("resized"), true}, {QStringLiteral("newDuration"), result}}}};
+    // Strategy: resize from right first, then slip to adjust in point
+    // First resize to target duration from the right
+    int currentDuration = model->getClipPlaytime(clipId);
+    if (newDuration != currentDuration) {
+        int resizeResult = model->requestItemResize(clipId, newDuration, true, true);
+        if (resizeResult == -1) {
+            return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
+                                                                     {QStringLiteral("message"), QStringLiteral("Failed to resize clip")}}}};
+        }
+    }
+
+    // Now adjust the in point using slip
+    // After resize, we have duration=newDuration but in point is still currentIn
+    // We need to slip by (currentIn - newIn) to get new in point
+    // Slip offset: positive moves content earlier (decreases in), negative moves later (increases in)
+    int inDelta = newIn - currentIn;
+    if (inDelta != 0) {
+        // Slip to adjust in point
+        // Note: slip may be partially applied or clamped if source doesn't have enough frames
+        // We don't treat partial slip as an error - the operation succeeds with what's possible
+        model->requestClipSlip(clipId, -inDelta, true, true);
+    }
+
+    // Verify position hasn't changed (it shouldn't with slip, but check anyway)
+    int finalPosition = model->getClipPosition(clipId);
+    if (finalPosition != originalPosition) {
+        // Position changed unexpectedly, try to move back
+        model->requestClipMove(clipId, trackId, originalPosition, true, true, true, true, false);
+    }
+
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("resized"), true}}}};
 }
 
 auto TimelineHandler::handleSplitClip(const QJsonObject &params) -> QJsonObject
@@ -722,8 +786,28 @@ auto TimelineHandler::handleSplitClip(const QJsonObject &params) -> QJsonObject
     // The new clip should be at position after the cut on the same track
     int newClipId = model->getClipByStartPosition(trackId, position);
 
-    return QJsonObject{
-        {QStringLiteral("result"), QJsonObject{{QStringLiteral("split"), true}, {QStringLiteral("newClipId"), newClipId >= 0 ? newClipId : QJsonValue()}}}};
+    // Build parts array with info about both clips
+    QJsonArray parts;
+
+    // First part (original clip, now shortened)
+    if (model->isClip(clipId)) {
+        QJsonObject part1;
+        part1[QStringLiteral("clipId")] = clipId;
+        part1[QStringLiteral("position")] = model->getClipPosition(clipId);
+        part1[QStringLiteral("duration")] = model->getClipPlaytime(clipId);
+        parts.append(part1);
+    }
+
+    // Second part (new clip after the cut)
+    if (newClipId >= 0 && model->isClip(newClipId)) {
+        QJsonObject part2;
+        part2[QStringLiteral("clipId")] = newClipId;
+        part2[QStringLiteral("position")] = model->getClipPosition(newClipId);
+        part2[QStringLiteral("duration")] = model->getClipPlaytime(newClipId);
+        parts.append(part2);
+    }
+
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("parts"), parts}}}};
 }
 
 auto TimelineHandler::handleSeek(const QJsonObject &params) -> QJsonObject
@@ -939,7 +1023,10 @@ auto TimelineHandler::handleSetTrackProperty(const QJsonObject &params) -> QJson
 
     QJsonValue value = params.value(QStringLiteral("value"));
 
-    if (property == QLatin1String("locked")) {
+    if (property == QLatin1String("name")) {
+        QString name = value.toString();
+        model->setTrackName(trackId, name);
+    } else if (property == QLatin1String("locked")) {
         model->setTrackLockedState(trackId, value.toBool());
     } else if (property == QLatin1String("muted")) {
         // The "hide" property is a bitmask: bit 1 = hidden, bit 2 = muted

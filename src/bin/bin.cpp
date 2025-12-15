@@ -6326,7 +6326,10 @@ void Bin::updateSequenceClip(const QUuid &uuid, std::pair<int, int> durations, i
     const QString binId = m_itemModel->getSequenceId(uuid);
     if (!binId.isEmpty() && m_doc->isModified()) {
         std::shared_ptr<ProjectClip> clip = m_itemModel->getClipByBinID(binId);
-        Q_ASSERT(clip != nullptr);
+        if (!clip) {
+            qWarning() << "updateSequenceClip: clip not found for binId" << binId;
+            return;
+        }
         clip->setProducerProperty(QStringLiteral("kdenlive:maxduration"), QString::number(durations.first));
         if (m_doc->sequenceThumbRequiresRefresh(uuid) || forceUpdate) {
             // Store general sequence properties

@@ -111,7 +111,7 @@ auto TransitionHandler::handleTransitionList(const QJsonObject & /*params*/) -> 
         transitions.append(transitionInfo);
     }
 
-    return QJsonObject{{QStringLiteral("result"), transitions}};
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("transitions"), transitions}}}};
 }
 
 auto TransitionHandler::handleTransitionAdd(const QJsonObject &params) -> QJsonObject
@@ -145,10 +145,14 @@ auto TransitionHandler::handleTransitionAdd(const QJsonObject &params) -> QJsonO
         return makeNoTimelineError();
     }
 
-    // Get required parameters
-    int clipId1 = params.value(QStringLiteral("clipId1")).toInt(-1);
-    int clipId2 = params.value(QStringLiteral("clipId2")).toInt(-1);
-    QString transitionId = params.value(QStringLiteral("transitionId")).toString(QStringLiteral("luma"));
+    // Get required parameters - accept both clipId1/clipId2 and fromClipId/toClipId for compatibility
+    int clipId1 = params.contains(QStringLiteral("fromClipId")) ? params.value(QStringLiteral("fromClipId")).toInt(-1)
+                                                                : params.value(QStringLiteral("clipId1")).toInt(-1);
+    int clipId2 =
+        params.contains(QStringLiteral("toClipId")) ? params.value(QStringLiteral("toClipId")).toInt(-1) : params.value(QStringLiteral("clipId2")).toInt(-1);
+    // Accept both transitionId and type parameter names
+    QString transitionId = params.contains(QStringLiteral("type")) ? params.value(QStringLiteral("type")).toString(QStringLiteral("luma"))
+                                                                   : params.value(QStringLiteral("transitionId")).toString(QStringLiteral("luma"));
 
     // If we have two clips, create a mix between them
     if (clipId1 >= 0 && clipId2 >= 0) {
@@ -176,7 +180,7 @@ auto TransitionHandler::handleTransitionAdd(const QJsonObject &params) -> QJsonO
     }
 
     return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
-                                                             {QStringLiteral("message"), QStringLiteral("Missing clipId1 parameter")}}}};
+                                                             {QStringLiteral("message"), QStringLiteral("Missing fromClipId/clipId1 parameter")}}}};
 }
 
 auto TransitionHandler::handleTransitionRemove(const QJsonObject &params) -> QJsonObject
@@ -402,7 +406,7 @@ auto TransitionHandler::handleCompositionList(const QJsonObject & /*params*/) ->
         compositions.append(compoInfo);
     }
 
-    return QJsonObject{{QStringLiteral("result"), compositions}};
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("compositions"), compositions}}}};
 }
 
 auto TransitionHandler::handleCompositionAdd(const QJsonObject &params) -> QJsonObject

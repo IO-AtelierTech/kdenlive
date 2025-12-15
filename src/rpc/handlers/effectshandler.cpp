@@ -122,6 +122,50 @@ auto EffectsHandler::makeEffectIndexError(int effectIndex) -> QJsonObject
                                                              {QStringLiteral("message"), QStringLiteral("Invalid effect index: %1").arg(effectIndex)}}}};
 }
 
+auto EffectsHandler::findEffectIndexById(const std::shared_ptr<EffectStackModel> &effectStack, const QString &effectId) -> int
+{
+    if (!effectStack) {
+        return -1;
+    }
+    for (int i = 0; i < effectStack->rowCount(); i++) {
+        auto effect = std::dynamic_pointer_cast<EffectItemModel>(effectStack->getEffectStackRow(i));
+        if (effect && effect->getAssetId() == effectId) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+auto EffectsHandler::resolveEffectIndex(const QJsonObject &params, const std::shared_ptr<EffectStackModel> &effectStack, QJsonObject &errorOut) -> int
+{
+    // Check for effectIndex first (explicit index has priority)
+    int effectIndex = params.value(QStringLiteral("effectIndex")).toInt(-1);
+
+    // If not provided, try to find by effectId
+    if (effectIndex < 0) {
+        QString effectId = params.value(QStringLiteral("effectId")).toString();
+        if (effectId.isEmpty()) {
+            errorOut = QJsonObject{
+                {QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
+                                                      {QStringLiteral("message"), QStringLiteral("Missing 'effectIndex' or 'effectId' parameter")}}}};
+            return -1;
+        }
+        effectIndex = findEffectIndexById(effectStack, effectId);
+        if (effectIndex < 0) {
+            errorOut = makeEffectNotFoundError(effectId);
+            return -1;
+        }
+    }
+
+    // Validate index is in range
+    if (effectIndex >= effectStack->rowCount()) {
+        errorOut = makeEffectIndexError(effectIndex);
+        return -1;
+    }
+
+    return effectIndex;
+}
+
 auto EffectsHandler::handleListAvailable(const QJsonObject & /*params*/) -> QJsonObject
 {
     QJsonArray effects;
@@ -277,6 +321,11 @@ auto EffectsHandler::handleAdd(const QJsonObject &params) -> QJsonObject
         return makeProjectNotOpenError();
     }
 
+    // Validate clip exists
+    if (!timeline->isClip(clipId)) {
+        return makeClipNotFoundError(clipId);
+    }
+
     // Get the clip's effect stack
     auto effectStack = timeline->getClipEffectStack(clipId);
     if (!effectStack) {
@@ -321,15 +370,13 @@ auto EffectsHandler::handleRemove(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Missing or invalid 'clipId' parameter")}}}};
     }
 
-    int effectIndex = params.value(QStringLiteral("effectIndex")).toInt(-1);
-    if (effectIndex < 0) {
-        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
-                                                                 {QStringLiteral("message"), QStringLiteral("Missing or invalid 'effectIndex' parameter")}}}};
-    }
-
     auto timeline = doc->getTimeline(pCore->currentTimelineId());
     if (!timeline) {
         return makeProjectNotOpenError();
+    }
+
+    if (!timeline->isClip(clipId)) {
+        return makeClipNotFoundError(clipId);
     }
 
     auto effectStack = timeline->getClipEffectStack(clipId);
@@ -337,8 +384,11 @@ auto EffectsHandler::handleRemove(const QJsonObject &params) -> QJsonObject
         return makeClipNotFoundError(clipId);
     }
 
-    if (effectIndex >= effectStack->rowCount()) {
-        return makeEffectIndexError(effectIndex);
+    // Resolve effect index from effectId or effectIndex parameter
+    QJsonObject error;
+    int effectIndex = resolveEffectIndex(params, effectStack, error);
+    if (effectIndex < 0) {
+        return error;
     }
 
     auto effect = std::dynamic_pointer_cast<EffectItemModel>(effectStack->getEffectStackRow(effectIndex));
@@ -348,7 +398,7 @@ auto EffectsHandler::handleRemove(const QJsonObject &params) -> QJsonObject
 
     effectStack->removeEffect(effect);
 
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("removed"), true}}}};
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("deleted"), true}}}};
 }
 
 auto EffectsHandler::handleGetClipEffects(const QJsonObject &params) -> QJsonObject
@@ -372,6 +422,10 @@ auto EffectsHandler::handleGetClipEffects(const QJsonObject &params) -> QJsonObj
     auto timeline = doc->getTimeline(pCore->currentTimelineId());
     if (!timeline) {
         return makeProjectNotOpenError();
+    }
+
+    if (!timeline->isClip(clipId)) {
+        return makeClipNotFoundError(clipId);
     }
 
     auto effectStack = timeline->getClipEffectStack(clipId);
@@ -408,10 +462,9 @@ auto EffectsHandler::handleGetProperty(const QJsonObject &params) -> QJsonObject
     }
 
     int clipId = params.value(QStringLiteral("clipId")).toInt(-1);
-    int effectIndex = params.value(QStringLiteral("effectIndex")).toInt(-1);
     QString property = params.value(QStringLiteral("property")).toString();
 
-    if (clipId < 0 || effectIndex < 0 || property.isEmpty()) {
+    if (clipId < 0 || property.isEmpty()) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
                                                                  {QStringLiteral("message"), QStringLiteral("Missing required parameters")}}}};
     }
@@ -421,13 +474,20 @@ auto EffectsHandler::handleGetProperty(const QJsonObject &params) -> QJsonObject
         return makeProjectNotOpenError();
     }
 
+    if (!timeline->isClip(clipId)) {
+        return makeClipNotFoundError(clipId);
+    }
+
     auto effectStack = timeline->getClipEffectStack(clipId);
     if (!effectStack) {
         return makeClipNotFoundError(clipId);
     }
 
-    if (effectIndex >= effectStack->rowCount()) {
-        return makeEffectIndexError(effectIndex);
+    // Resolve effect index from effectId or effectIndex parameter
+    QJsonObject error;
+    int effectIndex = resolveEffectIndex(params, effectStack, error);
+    if (effectIndex < 0) {
+        return error;
     }
 
     auto effect = std::dynamic_pointer_cast<EffectItemModel>(effectStack->getEffectStackRow(effectIndex));
@@ -437,7 +497,7 @@ auto EffectsHandler::handleGetProperty(const QJsonObject &params) -> QJsonObject
 
     QString value = effect->getParam(property);
 
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("property"), property}, {QStringLiteral("value"), value}}}};
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("value"), value}}}};
 }
 
 auto EffectsHandler::handleSetProperty(const QJsonObject &params) -> QJsonObject
@@ -453,11 +513,10 @@ auto EffectsHandler::handleSetProperty(const QJsonObject &params) -> QJsonObject
     }
 
     int clipId = params.value(QStringLiteral("clipId")).toInt(-1);
-    int effectIndex = params.value(QStringLiteral("effectIndex")).toInt(-1);
     QString property = params.value(QStringLiteral("property")).toString();
     QString value = params.value(QStringLiteral("value")).toString();
 
-    if (clipId < 0 || effectIndex < 0 || property.isEmpty()) {
+    if (clipId < 0 || property.isEmpty()) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
                                                                  {QStringLiteral("message"), QStringLiteral("Missing required parameters")}}}};
     }
@@ -467,13 +526,20 @@ auto EffectsHandler::handleSetProperty(const QJsonObject &params) -> QJsonObject
         return makeProjectNotOpenError();
     }
 
+    if (!timeline->isClip(clipId)) {
+        return makeClipNotFoundError(clipId);
+    }
+
     auto effectStack = timeline->getClipEffectStack(clipId);
     if (!effectStack) {
         return makeClipNotFoundError(clipId);
     }
 
-    if (effectIndex >= effectStack->rowCount()) {
-        return makeEffectIndexError(effectIndex);
+    // Resolve effect index from effectId or effectIndex parameter
+    QJsonObject error;
+    int effectIndex = resolveEffectIndex(params, effectStack, error);
+    if (effectIndex < 0) {
+        return error;
     }
 
     auto effect = std::dynamic_pointer_cast<EffectItemModel>(effectStack->getEffectStackRow(effectIndex));
@@ -483,7 +549,7 @@ auto EffectsHandler::handleSetProperty(const QJsonObject &params) -> QJsonObject
 
     effect->setParameter(property, value);
 
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("property"), property}, {QStringLiteral("value"), value}}}};
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("updated"), true}}}};
 }
 
 auto EffectsHandler::handleEnable(const QJsonObject &params) -> QJsonObject
@@ -499,11 +565,9 @@ auto EffectsHandler::handleEnable(const QJsonObject &params) -> QJsonObject
     }
 
     int clipId = params.value(QStringLiteral("clipId")).toInt(-1);
-    int effectIndex = params.value(QStringLiteral("effectIndex")).toInt(-1);
-
-    if (clipId < 0 || effectIndex < 0) {
+    if (clipId < 0) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
-                                                                 {QStringLiteral("message"), QStringLiteral("Missing required parameters")}}}};
+                                                                 {QStringLiteral("message"), QStringLiteral("Missing 'clipId' parameter")}}}};
     }
 
     auto timeline = doc->getTimeline(pCore->currentTimelineId());
@@ -511,13 +575,20 @@ auto EffectsHandler::handleEnable(const QJsonObject &params) -> QJsonObject
         return makeProjectNotOpenError();
     }
 
+    if (!timeline->isClip(clipId)) {
+        return makeClipNotFoundError(clipId);
+    }
+
     auto effectStack = timeline->getClipEffectStack(clipId);
     if (!effectStack) {
         return makeClipNotFoundError(clipId);
     }
 
-    if (effectIndex >= effectStack->rowCount()) {
-        return makeEffectIndexError(effectIndex);
+    // Resolve effect index from effectId or effectIndex parameter
+    QJsonObject error;
+    int effectIndex = resolveEffectIndex(params, effectStack, error);
+    if (effectIndex < 0) {
+        return error;
     }
 
     auto effect = std::dynamic_pointer_cast<EffectItemModel>(effectStack->getEffectStackRow(effectIndex));
@@ -543,11 +614,9 @@ auto EffectsHandler::handleDisable(const QJsonObject &params) -> QJsonObject
     }
 
     int clipId = params.value(QStringLiteral("clipId")).toInt(-1);
-    int effectIndex = params.value(QStringLiteral("effectIndex")).toInt(-1);
-
-    if (clipId < 0 || effectIndex < 0) {
+    if (clipId < 0) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
-                                                                 {QStringLiteral("message"), QStringLiteral("Missing required parameters")}}}};
+                                                                 {QStringLiteral("message"), QStringLiteral("Missing 'clipId' parameter")}}}};
     }
 
     auto timeline = doc->getTimeline(pCore->currentTimelineId());
@@ -555,13 +624,20 @@ auto EffectsHandler::handleDisable(const QJsonObject &params) -> QJsonObject
         return makeProjectNotOpenError();
     }
 
+    if (!timeline->isClip(clipId)) {
+        return makeClipNotFoundError(clipId);
+    }
+
     auto effectStack = timeline->getClipEffectStack(clipId);
     if (!effectStack) {
         return makeClipNotFoundError(clipId);
     }
 
-    if (effectIndex >= effectStack->rowCount()) {
-        return makeEffectIndexError(effectIndex);
+    // Resolve effect index from effectId or effectIndex parameter
+    QJsonObject error;
+    int effectIndex = resolveEffectIndex(params, effectStack, error);
+    if (effectIndex < 0) {
+        return error;
     }
 
     auto effect = std::dynamic_pointer_cast<EffectItemModel>(effectStack->getEffectStackRow(effectIndex));
@@ -587,12 +663,9 @@ auto EffectsHandler::handleReorder(const QJsonObject &params) -> QJsonObject
     }
 
     int clipId = params.value(QStringLiteral("clipId")).toInt(-1);
-    int fromIndex = params.value(QStringLiteral("fromIndex")).toInt(-1);
-    int toIndex = params.value(QStringLiteral("toIndex")).toInt(-1);
-
-    if (clipId < 0 || fromIndex < 0 || toIndex < 0) {
+    if (clipId < 0) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
-                                                                 {QStringLiteral("message"), QStringLiteral("Missing required parameters")}}}};
+                                                                 {QStringLiteral("message"), QStringLiteral("Missing 'clipId' parameter")}}}};
     }
 
     auto timeline = doc->getTimeline(pCore->currentTimelineId());
@@ -600,9 +673,42 @@ auto EffectsHandler::handleReorder(const QJsonObject &params) -> QJsonObject
         return makeProjectNotOpenError();
     }
 
+    if (!timeline->isClip(clipId)) {
+        return makeClipNotFoundError(clipId);
+    }
+
     auto effectStack = timeline->getClipEffectStack(clipId);
     if (!effectStack) {
         return makeClipNotFoundError(clipId);
+    }
+
+    // Support two calling conventions:
+    // 1. New: effectId/effectIndex + newIndex (client sends this)
+    // 2. Legacy: fromIndex + toIndex
+    int fromIndex = -1;
+    int toIndex = -1;
+
+    // Check for newIndex (new convention)
+    int newIndex = params.value(QStringLiteral("newIndex")).toInt(-1);
+    if (newIndex >= 0) {
+        // Resolve source effect index from effectId or effectIndex
+        QJsonObject error;
+        fromIndex = resolveEffectIndex(params, effectStack, error);
+        if (fromIndex < 0) {
+            return error;
+        }
+        toIndex = newIndex;
+    } else {
+        // Try legacy fromIndex + toIndex
+        fromIndex = params.value(QStringLiteral("fromIndex")).toInt(-1);
+        toIndex = params.value(QStringLiteral("toIndex")).toInt(-1);
+
+        if (fromIndex < 0 || toIndex < 0) {
+            return QJsonObject{{QStringLiteral("error"),
+                                QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
+                                            {QStringLiteral("message"),
+                                             QStringLiteral("Missing parameters: need (effectId/effectIndex + newIndex) or (fromIndex + toIndex)")}}}};
+        }
     }
 
     if (fromIndex >= effectStack->rowCount() || toIndex >= effectStack->rowCount()) {
@@ -617,8 +723,7 @@ auto EffectsHandler::handleReorder(const QJsonObject &params) -> QJsonObject
 
     effectStack->moveEffect(toIndex, effect);
 
-    return QJsonObject{{QStringLiteral("result"),
-                        QJsonObject{{QStringLiteral("moved"), true}, {QStringLiteral("fromIndex"), fromIndex}, {QStringLiteral("toIndex"), toIndex}}}};
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("reordered"), true}}}};
 }
 
 auto EffectsHandler::handleCopyToClips(const QJsonObject &params) -> QJsonObject
@@ -646,15 +751,33 @@ auto EffectsHandler::handleCopyToClips(const QJsonObject &params) -> QJsonObject
         return makeProjectNotOpenError();
     }
 
+    if (!timeline->isClip(sourceClipId)) {
+        return makeClipNotFoundError(sourceClipId);
+    }
+
     auto sourceStack = timeline->getClipEffectStack(sourceClipId);
     if (!sourceStack) {
         return makeClipNotFoundError(sourceClipId);
     }
 
+    // Resolve which effect to copy (effectId or effectIndex)
+    QJsonObject error;
+    int effectIndex = resolveEffectIndex(params, sourceStack, error);
+    if (effectIndex < 0) {
+        return error;
+    }
+
+    auto sourceEffect = std::dynamic_pointer_cast<EffectItemModel>(sourceStack->getEffectStackRow(effectIndex));
+    if (!sourceEffect) {
+        return makeEffectIndexError(effectIndex);
+    }
+
+    QString effectId = sourceEffect->getAssetId();
+
     int copiedCount = 0;
     for (const auto &targetIdVal : targetClipIds) {
         int targetId = targetIdVal.toInt(-1);
-        if (targetId < 0) {
+        if (targetId < 0 || !timeline->isClip(targetId)) {
             continue;
         }
 
@@ -663,12 +786,13 @@ auto EffectsHandler::handleCopyToClips(const QJsonObject &params) -> QJsonObject
             continue;
         }
 
-        if (targetStack->importEffects(sourceStack, PlaylistState::Disabled)) {
+        // Copy the effect by adding it with its parameters
+        if (targetStack->copyEffect(sourceEffect, PlaylistState::Disabled, false)) {
             copiedCount++;
         }
     }
 
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("copiedToClips"), copiedCount}}}};
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("count"), copiedCount}}}};
 }
 
 auto EffectsHandler::handleGetKeyframes(const QJsonObject &params) -> QJsonObject
@@ -684,10 +808,9 @@ auto EffectsHandler::handleGetKeyframes(const QJsonObject &params) -> QJsonObjec
     }
 
     int clipId = params.value(QStringLiteral("clipId")).toInt(-1);
-    int effectIndex = params.value(QStringLiteral("effectIndex")).toInt(-1);
     QString property = params.value(QStringLiteral("property")).toString();
 
-    if (clipId < 0 || effectIndex < 0 || property.isEmpty()) {
+    if (clipId < 0 || property.isEmpty()) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
                                                                  {QStringLiteral("message"), QStringLiteral("Missing required parameters")}}}};
     }
@@ -697,13 +820,20 @@ auto EffectsHandler::handleGetKeyframes(const QJsonObject &params) -> QJsonObjec
         return makeProjectNotOpenError();
     }
 
+    if (!timeline->isClip(clipId)) {
+        return makeClipNotFoundError(clipId);
+    }
+
     auto effectStack = timeline->getClipEffectStack(clipId);
     if (!effectStack) {
         return makeClipNotFoundError(clipId);
     }
 
-    if (effectIndex >= effectStack->rowCount()) {
-        return makeEffectIndexError(effectIndex);
+    // Resolve effect index from effectId or effectIndex parameter
+    QJsonObject error;
+    int effectIndex = resolveEffectIndex(params, effectStack, error);
+    if (effectIndex < 0) {
+        return error;
     }
 
     auto effect = std::dynamic_pointer_cast<EffectItemModel>(effectStack->getEffectStackRow(effectIndex));
@@ -713,7 +843,7 @@ auto EffectsHandler::handleGetKeyframes(const QJsonObject &params) -> QJsonObjec
 
     auto keyframes = effect->getKeyframeModel();
     if (!keyframes) {
-        return QJsonObject{{QStringLiteral("result"), QJsonArray()}};
+        return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("keyframes"), QJsonArray()}}}};
     }
 
     QJsonArray keyframeArray;
@@ -724,7 +854,8 @@ auto EffectsHandler::handleGetKeyframes(const QJsonObject &params) -> QJsonObjec
     if (kfModel) {
         for (auto &it : *kfModel) {
             QJsonObject kfObj;
-            kfObj[QStringLiteral("frame")] = it.first.frames(pCore->getCurrentFps());
+            // Client expects "position", not "frame"
+            kfObj[QStringLiteral("position")] = it.first.frames(pCore->getCurrentFps());
             kfObj[QStringLiteral("value")] = it.second.second.toString();
 
             QString typeStr;
@@ -747,7 +878,8 @@ auto EffectsHandler::handleGetKeyframes(const QJsonObject &params) -> QJsonObjec
         }
     }
 
-    return QJsonObject{{QStringLiteral("result"), keyframeArray}};
+    // Client expects {"keyframes": [...]} wrapper
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("keyframes"), keyframeArray}}}};
 }
 
 auto EffectsHandler::handleSetKeyframe(const QJsonObject &params) -> QJsonObject
@@ -763,13 +895,16 @@ auto EffectsHandler::handleSetKeyframe(const QJsonObject &params) -> QJsonObject
     }
 
     int clipId = params.value(QStringLiteral("clipId")).toInt(-1);
-    int effectIndex = params.value(QStringLiteral("effectIndex")).toInt(-1);
     QString property = params.value(QStringLiteral("property")).toString();
-    int frame = params.value(QStringLiteral("frame")).toInt(-1);
+    // Accept both "position" (client sends this) and "frame" (legacy)
+    int frame = params.value(QStringLiteral("position")).toInt(-1);
+    if (frame < 0) {
+        frame = params.value(QStringLiteral("frame")).toInt(-1);
+    }
     QString value = params.value(QStringLiteral("value")).toString();
     QString typeStr = params.value(QStringLiteral("type")).toString(QStringLiteral("linear"));
 
-    if (clipId < 0 || effectIndex < 0 || property.isEmpty() || frame < 0) {
+    if (clipId < 0 || property.isEmpty() || frame < 0) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
                                                                  {QStringLiteral("message"), QStringLiteral("Missing required parameters")}}}};
     }
@@ -779,13 +914,20 @@ auto EffectsHandler::handleSetKeyframe(const QJsonObject &params) -> QJsonObject
         return makeProjectNotOpenError();
     }
 
+    if (!timeline->isClip(clipId)) {
+        return makeClipNotFoundError(clipId);
+    }
+
     auto effectStack = timeline->getClipEffectStack(clipId);
     if (!effectStack) {
         return makeClipNotFoundError(clipId);
     }
 
-    if (effectIndex >= effectStack->rowCount()) {
-        return makeEffectIndexError(effectIndex);
+    // Resolve effect index from effectId or effectIndex parameter
+    QJsonObject error;
+    int effectIndex = resolveEffectIndex(params, effectStack, error);
+    if (effectIndex < 0) {
+        return error;
     }
 
     auto effect = std::dynamic_pointer_cast<EffectItemModel>(effectStack->getEffectStackRow(effectIndex));
@@ -815,7 +957,8 @@ auto EffectsHandler::handleSetKeyframe(const QJsonObject &params) -> QJsonObject
         keyframes->updateKeyframe(pos, pos, QVariant(value), false);
     }
 
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("success"), success}, {QStringLiteral("frame"), frame}}}};
+    // Client expects "set" not "success"
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("set"), success}}}};
 }
 
 auto EffectsHandler::handleDeleteKeyframe(const QJsonObject &params) -> QJsonObject
@@ -831,11 +974,14 @@ auto EffectsHandler::handleDeleteKeyframe(const QJsonObject &params) -> QJsonObj
     }
 
     int clipId = params.value(QStringLiteral("clipId")).toInt(-1);
-    int effectIndex = params.value(QStringLiteral("effectIndex")).toInt(-1);
     QString property = params.value(QStringLiteral("property")).toString();
-    int frame = params.value(QStringLiteral("frame")).toInt(-1);
+    // Accept both "position" (client sends this) and "frame" (legacy)
+    int frame = params.value(QStringLiteral("position")).toInt(-1);
+    if (frame < 0) {
+        frame = params.value(QStringLiteral("frame")).toInt(-1);
+    }
 
-    if (clipId < 0 || effectIndex < 0 || property.isEmpty() || frame < 0) {
+    if (clipId < 0 || property.isEmpty() || frame < 0) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
                                                                  {QStringLiteral("message"), QStringLiteral("Missing required parameters")}}}};
     }
@@ -845,13 +991,20 @@ auto EffectsHandler::handleDeleteKeyframe(const QJsonObject &params) -> QJsonObj
         return makeProjectNotOpenError();
     }
 
+    if (!timeline->isClip(clipId)) {
+        return makeClipNotFoundError(clipId);
+    }
+
     auto effectStack = timeline->getClipEffectStack(clipId);
     if (!effectStack) {
         return makeClipNotFoundError(clipId);
     }
 
-    if (effectIndex >= effectStack->rowCount()) {
-        return makeEffectIndexError(effectIndex);
+    // Resolve effect index from effectId or effectIndex parameter
+    QJsonObject error;
+    int effectIndex = resolveEffectIndex(params, effectStack, error);
+    if (effectIndex < 0) {
+        return error;
     }
 
     auto effect = std::dynamic_pointer_cast<EffectItemModel>(effectStack->getEffectStackRow(effectIndex));
@@ -868,7 +1021,8 @@ auto EffectsHandler::handleDeleteKeyframe(const QJsonObject &params) -> QJsonObj
     GenTime pos(frame, pCore->getCurrentFps());
     bool success = keyframes->removeKeyframe(pos);
 
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("success"), success}, {QStringLiteral("frame"), frame}}}};
+    // Client expects "deleted" not "success"
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("deleted"), success}}}};
 }
 
 auto EffectsHandler::handleDeleteAllKeyframes(const QJsonObject &params) -> QJsonObject
@@ -884,10 +1038,9 @@ auto EffectsHandler::handleDeleteAllKeyframes(const QJsonObject &params) -> QJso
     }
 
     int clipId = params.value(QStringLiteral("clipId")).toInt(-1);
-    int effectIndex = params.value(QStringLiteral("effectIndex")).toInt(-1);
     QString property = params.value(QStringLiteral("property")).toString();
 
-    if (clipId < 0 || effectIndex < 0 || property.isEmpty()) {
+    if (clipId < 0 || property.isEmpty()) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
                                                                  {QStringLiteral("message"), QStringLiteral("Missing required parameters")}}}};
     }
@@ -897,13 +1050,20 @@ auto EffectsHandler::handleDeleteAllKeyframes(const QJsonObject &params) -> QJso
         return makeProjectNotOpenError();
     }
 
+    if (!timeline->isClip(clipId)) {
+        return makeClipNotFoundError(clipId);
+    }
+
     auto effectStack = timeline->getClipEffectStack(clipId);
     if (!effectStack) {
         return makeClipNotFoundError(clipId);
     }
 
-    if (effectIndex >= effectStack->rowCount()) {
-        return makeEffectIndexError(effectIndex);
+    // Resolve effect index from effectId or effectIndex parameter
+    QJsonObject error;
+    int effectIndex = resolveEffectIndex(params, effectStack, error);
+    if (effectIndex < 0) {
+        return error;
     }
 
     auto effect = std::dynamic_pointer_cast<EffectItemModel>(effectStack->getEffectStackRow(effectIndex));
@@ -919,5 +1079,5 @@ auto EffectsHandler::handleDeleteAllKeyframes(const QJsonObject &params) -> QJso
 
     bool success = keyframes->removeAllKeyframes();
 
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("success"), success}}}};
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("deleted"), success}}}};
 }

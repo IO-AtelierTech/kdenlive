@@ -279,6 +279,9 @@ auto BinHandler::handleListFolders(const QJsonObject & /*params*/) -> QJsonObjec
 
 auto BinHandler::handleGetClipInfo(const QJsonObject &params) -> QJsonObject
 {
+    fprintf(stderr, "BinHandler::handleGetClipInfo START\n");
+    fflush(stderr);
+
     // Check if application is shutting down
     if (pCore->closing) {
         return makeApplicationClosingError();
@@ -300,32 +303,53 @@ auto BinHandler::handleGetClipInfo(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Missing 'clipId' parameter")}}}};
     }
 
+    fprintf(stderr, "BinHandler::handleGetClipInfo: getting clip %s\n", clipId.toUtf8().constData());
+    fflush(stderr);
+
+    // Process events first to let any pending ClipLoadTask complete
+    qApp->processEvents(QEventLoop::AllEvents, 50);
+
     auto clip = model->getClipByBinID(clipId);
     if (!clip) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::ClipNotFound},
                                                                  {QStringLiteral("message"), QStringLiteral("Clip not found: %1").arg(clipId)}}}};
     }
 
+    fprintf(stderr, "BinHandler::handleGetClipInfo: got clip, checking status\n");
+    fflush(stderr);
+
+    // Check status FIRST before accessing any other properties
+    FileStatus::ClipStatus status = clip->clipStatus();
+    fprintf(stderr, "BinHandler::handleGetClipInfo: status=%d\n", static_cast<int>(status));
+    fflush(stderr);
+
     QJsonObject clipInfo;
     clipInfo[QStringLiteral("id")] = clipId;
-    clipInfo[QStringLiteral("name")] = clip->name();
-    clipInfo[QStringLiteral("type")] = static_cast<int>(clip->clipType());
-    clipInfo[QStringLiteral("url")] = clip->url();
 
-    // Check if clip is still loading - if so, skip producer-dependent properties
+    // Check if clip is still loading - if so, skip ALL producer-dependent properties
     // to avoid deadlock with ClipLoadTask's BlockingQueuedConnection
-    FileStatus::ClipStatus status = clip->clipStatus();
     if (status == FileStatus::StatusWaiting) {
-        // Clip is still loading, use placeholder values
+        fprintf(stderr, "BinHandler::handleGetClipInfo: clip still loading, returning placeholder\n");
+        fflush(stderr);
+        // Clip is still loading, use placeholder values for everything
+        clipInfo[QStringLiteral("name")] = QStringLiteral("");
+        clipInfo[QStringLiteral("type")] = 0;
+        clipInfo[QStringLiteral("url")] = QStringLiteral("");
         clipInfo[QStringLiteral("duration")] = 0;
         clipInfo[QStringLiteral("hasAudio")] = false;
         clipInfo[QStringLiteral("hasVideo")] = false;
         clipInfo[QStringLiteral("width")] = 0;
         clipInfo[QStringLiteral("height")] = 0;
         clipInfo[QStringLiteral("fps")] = 0.0;
+        clipInfo[QStringLiteral("folderId")] = QStringLiteral("-1");
         clipInfo[QStringLiteral("loading")] = true;
     } else {
+        fprintf(stderr, "BinHandler::handleGetClipInfo: clip ready, getting properties\n");
+        fflush(stderr);
         // Clip is ready, get actual values
+        clipInfo[QStringLiteral("name")] = clip->name();
+        clipInfo[QStringLiteral("type")] = static_cast<int>(clip->clipType());
+        clipInfo[QStringLiteral("url")] = clip->url();
         clipInfo[QStringLiteral("duration")] = static_cast<int>(clip->frameDuration());
         clipInfo[QStringLiteral("hasAudio")] = clip->hasAudio();
         clipInfo[QStringLiteral("hasVideo")] = clip->hasVideo();
@@ -335,14 +359,17 @@ auto BinHandler::handleGetClipInfo(const QJsonObject &params) -> QJsonObject
         clipInfo[QStringLiteral("width")] = frameSize.width();
         clipInfo[QStringLiteral("height")] = frameSize.height();
         clipInfo[QStringLiteral("fps")] = clip->getOriginalFps();
+        clipInfo[QStringLiteral("loading")] = false;
+
+        // Parent folder
+        auto parent = std::static_pointer_cast<AbstractProjectItem>(clip)->parent();
+        if (parent) {
+            clipInfo[QStringLiteral("folderId")] = parent->clipId();
+        }
     }
 
-    // Parent folder
-    auto parent = std::static_pointer_cast<AbstractProjectItem>(clip)->parent();
-    if (parent) {
-        clipInfo[QStringLiteral("folderId")] = parent->clipId();
-    }
-
+    fprintf(stderr, "BinHandler::handleGetClipInfo: returning result\n");
+    fflush(stderr);
     return QJsonObject{{QStringLiteral("result"), clipInfo}};
 }
 
@@ -403,25 +430,11 @@ auto BinHandler::handleImportClip(const QJsonObject &params) -> QJsonObject
                                                                  {QStringLiteral("message"), QStringLiteral("Failed to import clip")}}}};
     }
 
-    // Wait for clip to finish loading (timeout configurable, default 10s)
-    // Clients can set timeout=0 to return immediately without waiting
-    int timeoutMs = params.value(QStringLiteral("timeout")).toInt(10000);
-    int maxWait = timeoutMs / 100; // Convert to iterations (100ms each)
-
-    auto clip = pCore->projectItemModel()->getClipByBinID(clipId);
-    if (clip && maxWait > 0) {
-        fprintf(stderr, "BinHandler::handleImportClip: waiting for clip to load (timeout=%dms)...\n", timeoutMs);
-        fflush(stderr);
-        int waitCount = 0;
-        while (clip->clipStatus() == FileStatus::StatusWaiting && waitCount < maxWait) {
-            qApp->processEvents(QEventLoop::AllEvents, 100);
-            waitCount++;
-        }
-        fprintf(stderr, "BinHandler::handleImportClip: clip ready after %d iterations, status=%d\n", waitCount, static_cast<int>(clip->clipStatus()));
-        fflush(stderr);
-    }
-
-    fprintf(stderr, "BinHandler::handleImportClip: returning clipId=%s\n", clipId.toUtf8().constData());
+    // Return immediately - clip loading happens async in ClipLoadTask
+    // We cannot wait here because ClipLoadTask uses BlockingQueuedConnection
+    // to call setProducer(), which would deadlock with processEvents()
+    // Client should poll getClipInfo() and check the 'loading' field
+    fprintf(stderr, "BinHandler::handleImportClip: returning clipId=%s (loading async)\n", clipId.toUtf8().constData());
     fflush(stderr);
 
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("clipId"), clipId}}}};
@@ -471,18 +484,13 @@ auto BinHandler::handleImportClips(const QJsonObject &params) -> QJsonObject
     fprintf(stderr, "BinHandler::handleImportClips: importing %lld files to folder %s\n", urlList.size(), folderId.toUtf8().constData());
     fflush(stderr);
 
-    // Timeout per clip (configurable, default 10s, set 0 to skip waiting)
-    int timeoutMs = params.value(QStringLiteral("timeout")).toInt(10000);
-    int maxWait = timeoutMs / 100;
-
-    // Import each clip using the exact same code path as handleImportClip
+    // Import each clip - no waiting, same as handleImportClip
     QJsonArray clipIds;
 
     for (const QUrl &url : urlList) {
         fprintf(stderr, "BinHandler::handleImportClips: importing %s\n", url.toLocalFile().toUtf8().constData());
         fflush(stderr);
 
-        // Replicate handleImportClip exactly for each file
         pCore->bin()->shouldCheckProfile = false;
 
         Fun undo = []() { return true; };
@@ -498,22 +506,11 @@ auto BinHandler::handleImportClips(const QJsonObject &params) -> QJsonObject
         }
 
         clipIds.append(clipId);
-
-        // Wait for clip to finish loading
-        auto clip = pCore->projectItemModel()->getClipByBinID(clipId);
-        if (clip && maxWait > 0) {
-            int waitCount = 0;
-            while (clip->clipStatus() == FileStatus::StatusWaiting && waitCount < maxWait) {
-                qApp->processEvents(QEventLoop::AllEvents, 100);
-                waitCount++;
-            }
-            fprintf(stderr, "BinHandler::handleImportClips: clip %s ready after %d iterations, status=%d\n", clipId.toUtf8().constData(), waitCount,
-                    static_cast<int>(clip->clipStatus()));
-            fflush(stderr);
-        }
     }
 
-    fprintf(stderr, "BinHandler::handleImportClips: all %lld clips imported\n", clipIds.size());
+    // Return immediately - clip loading happens async in ClipLoadTask
+    // Client should poll getClipInfo() for each clip if needed
+    fprintf(stderr, "BinHandler::handleImportClips: returning %lld clipIds (loading async)\n", clipIds.size());
     fflush(stderr);
 
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("clipIds"), clipIds}}}};

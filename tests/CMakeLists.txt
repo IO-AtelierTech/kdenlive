@@ -28,6 +28,7 @@ set(KdenliveTest_SOURCES
     rendermodeltest.cpp
     replacetest.cpp
     rpctest.cpp
+    schematest.cpp
     sequencetest.cpp
     snaptest.cpp
     spacertest.cpp

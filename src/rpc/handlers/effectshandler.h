@@ -9,6 +9,10 @@
 
 #include <QObject>
 
+#include <memory>
+
+class EffectStackModel;
+
 class RpcNotifier;
 
 /**
@@ -65,6 +69,23 @@ private:
     static QJsonObject makeClipNotFoundError(int clipId);
     static QJsonObject makeEffectNotFoundError(const QString &effectId);
     static QJsonObject makeEffectIndexError(int effectIndex);
+
+    /**
+     * @brief Find effect index by its asset ID
+     * @param effectStack The effect stack to search
+     * @param effectId The effect asset ID (e.g., "brightness")
+     * @return The effect index or -1 if not found
+     */
+    static int findEffectIndexById(const std::shared_ptr<EffectStackModel> &effectStack, const QString &effectId);
+
+    /**
+     * @brief Resolve effect index from params (accepts both effectId and effectIndex)
+     * @param params The RPC params
+     * @param effectStack The effect stack to search
+     * @param errorOut Output error object if resolution fails
+     * @return The resolved effect index or -1 on error
+     */
+    static int resolveEffectIndex(const QJsonObject &params, const std::shared_ptr<EffectStackModel> &effectStack, QJsonObject &errorOut);
 
     RpcNotifier *m_notifier;
 };

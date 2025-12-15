@@ -118,7 +118,7 @@ auto AssetsHandler::handleListCategories(const QJsonObject & /*params*/) -> QJso
     compositions[QStringLiteral("type")] = QStringLiteral("transition");
     categories.append(compositions);
 
-    return QJsonObject{{QStringLiteral("result"), categories}};
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("categories"), categories}}}};
 }
 
 auto AssetsHandler::handleSearch(const QJsonObject &params) -> QJsonObject
@@ -171,7 +171,7 @@ auto AssetsHandler::handleSearch(const QJsonObject &params) -> QJsonObject
         }
     }
 
-    return QJsonObject{{QStringLiteral("result"), results}};
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("results"), results}}}};
 }
 
 auto AssetsHandler::handleGetEffectsByCategory(const QJsonObject &params) -> QJsonObject
@@ -215,7 +215,7 @@ auto AssetsHandler::handleGetEffectsByCategory(const QJsonObject &params) -> QJs
         }
     }
 
-    return QJsonObject{{QStringLiteral("result"), effects}};
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("effects"), effects}}}};
 }
 
 auto AssetsHandler::handleGetFavorites(const QJsonObject & /*params*/) -> QJsonObject
@@ -246,7 +246,7 @@ auto AssetsHandler::handleGetFavorites(const QJsonObject & /*params*/) -> QJsonO
         }
     }
 
-    return QJsonObject{{QStringLiteral("result"), favorites}};
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("favorites"), favorites}}}};
 }
 
 auto AssetsHandler::handleAddFavorite(const QJsonObject &params) -> QJsonObject
@@ -349,18 +349,21 @@ auto AssetsHandler::handleGetPresets(const QJsonObject &params) -> QJsonObject
         }
     }
 
-    return QJsonObject{{QStringLiteral("result"), presets}};
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("presets"), presets}}}};
 }
 
 auto AssetsHandler::handleSavePreset(const QJsonObject &params) -> QJsonObject
 {
     QString effectId = params.value(QStringLiteral("effectId")).toString();
-    QString name = params.value(QStringLiteral("name")).toString();
+    // Accept both 'name' and 'presetName' for compatibility
+    QString name =
+        params.contains(QStringLiteral("presetName")) ? params.value(QStringLiteral("presetName")).toString() : params.value(QStringLiteral("name")).toString();
     QJsonObject presetParams = params.value(QStringLiteral("params")).toObject();
 
     if (effectId.isEmpty() || name.isEmpty()) {
-        return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
-                                                                 {QStringLiteral("message"), QStringLiteral("Missing 'effectId' or 'name' parameter")}}}};
+        return QJsonObject{
+            {QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
+                                                  {QStringLiteral("message"), QStringLiteral("Missing 'effectId' or 'name'/'presetName' parameter")}}}};
     }
 
     if (!EffectsRepository::get()->exists(effectId)) {

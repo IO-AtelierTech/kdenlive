@@ -20,6 +20,10 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QProcess>
+#include <QProcessEnvironment>
+
+#include "kdenlivesettings.h"
 
 RenderHandler::RenderHandler(RpcNotifier *notifier, QObject *parent)
     : QObject(parent)
@@ -231,10 +235,31 @@ auto RenderHandler::handleStart(const QJsonObject &params) -> QJsonObject
     // Use the output path as job ID
     QString jobId = outputPath;
 
+    // Actually start the render process for each job
+    for (const auto &job : jobs) {
+        QStringList rendererArgs = RenderRequest::argsByJob(job, true); // true = add PID for callback
+
+        QProcess proc;
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        if (!KdenliveSettings::hwDecoding().isEmpty()) {
+            env.insert(QLatin1String("MLT_AVFORMAT_HWACCEL"), KdenliveSettings::hwDecoding());
+        }
+        proc.setProgram(KdenliveSettings::kdenliverendererpath());
+        proc.setProcessEnvironment(env);
+        proc.setArguments(rendererArgs);
+
+        if (!proc.startDetached()) {
+            return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
+                                                                     {QStringLiteral("message"), QStringLiteral("Failed to start render process")}}}};
+        }
+    }
+
     // Notify that render started
     m_notifier->notify(QStringLiteral("render.started"), QJsonObject{{QStringLiteral("jobId"), jobId}, {QStringLiteral("outputPath"), outputPath}});
 
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("jobId"), jobId}, {QStringLiteral("outputPath"), outputPath}}}};
+    return QJsonObject{
+        {QStringLiteral("result"),
+         QJsonObject{{QStringLiteral("jobId"), jobId}, {QStringLiteral("outputPath"), outputPath}, {QStringLiteral("status"), QStringLiteral("rendering")}}}};
 }
 
 auto RenderHandler::handleStartWithGuides(const QJsonObject &params) -> QJsonObject
@@ -249,13 +274,17 @@ auto RenderHandler::handleStartWithGuides(const QJsonObject &params) -> QJsonObj
         return makeProjectNotOpenError();
     }
 
-    QString outputPath = params.value(QStringLiteral("outputPath")).toString();
+    // Accept both 'outputDir' (client sends this) and 'outputPath' (legacy)
+    QString outputPath = params.value(QStringLiteral("outputDir")).toString();
+    if (outputPath.isEmpty()) {
+        outputPath = params.value(QStringLiteral("outputPath")).toString();
+    }
     QString presetName = params.value(QStringLiteral("preset")).toString();
     int guideCategory = params.value(QStringLiteral("guideCategory")).toInt(-1);
 
     if (outputPath.isEmpty() || presetName.isEmpty()) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
-                                                                 {QStringLiteral("message"), QStringLiteral("Missing 'outputPath' or 'preset' parameter")}}}};
+                                                                 {QStringLiteral("message"), QStringLiteral("Missing 'outputDir' or 'preset' parameter")}}}};
     }
 
     if (!RenderPresetRepository::get()->presetExists(presetName)) {
@@ -285,16 +314,37 @@ auto RenderHandler::handleStartWithGuides(const QJsonObject &params) -> QJsonObj
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed}, {QStringLiteral("message"), errorMsg}}}};
     }
 
-    QJsonArray jobIds;
+    QJsonArray jobArray;
     for (const auto &job : jobs) {
-        jobIds.append(job.outputPath);
+        // Actually start the render process
+        QStringList rendererArgs = RenderRequest::argsByJob(job, true); // true = add PID for callback
+
+        QProcess proc;
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        if (!KdenliveSettings::hwDecoding().isEmpty()) {
+            env.insert(QLatin1String("MLT_AVFORMAT_HWACCEL"), KdenliveSettings::hwDecoding());
+        }
+        proc.setProgram(KdenliveSettings::kdenliverendererpath());
+        proc.setProcessEnvironment(env);
+        proc.setArguments(rendererArgs);
+
+        if (!proc.startDetached()) {
+            return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::OperationFailed},
+                                                                     {QStringLiteral("message"), QStringLiteral("Failed to start render process")}}}};
+        }
+
+        QJsonObject jobObj;
+        jobObj[QStringLiteral("jobId")] = job.outputPath;
+        jobObj[QStringLiteral("outputPath")] = job.outputPath;
+        jobArray.append(jobObj);
 
         // Notify for each job
         m_notifier->notify(QStringLiteral("render.started"),
                            QJsonObject{{QStringLiteral("jobId"), job.outputPath}, {QStringLiteral("outputPath"), job.outputPath}});
     }
 
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("jobIds"), jobIds}}}};
+    // Return list of job objects directly (client expects list, not wrapped)
+    return QJsonObject{{QStringLiteral("result"), jobArray}};
 }
 
 auto RenderHandler::handleStop(const QJsonObject &params) -> QJsonObject
@@ -411,11 +461,15 @@ auto RenderHandler::handleGetActiveJob(const QJsonObject & /*params*/) -> QJsonO
 
 auto RenderHandler::handleSetOutput(const QJsonObject &params) -> QJsonObject
 {
-    QString path = params.value(QStringLiteral("path")).toString();
+    // Accept both 'defaultPath' (client sends this) and 'path' (legacy)
+    QString path = params.value(QStringLiteral("defaultPath")).toString();
+    if (path.isEmpty()) {
+        path = params.value(QStringLiteral("path")).toString();
+    }
 
     if (path.isEmpty()) {
         return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), RpcError::InvalidParams},
-                                                                 {QStringLiteral("message"), QStringLiteral("Missing 'path' parameter")}}}};
+                                                                 {QStringLiteral("message"), QStringLiteral("Missing 'defaultPath' or 'path' parameter")}}}};
     }
 
     // Validate path
@@ -437,5 +491,5 @@ auto RenderHandler::handleSetOutput(const QJsonObject &params) -> QJsonObject
         rw->resetRenderPath(path);
     }
 
-    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("path"), path}}}};
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("set"), true}}}};
 }

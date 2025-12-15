@@ -231,21 +231,31 @@ void TaskManager::taskDone(int cid, AbstractTask *task)
         // We are closing, tasks will be handled on close
         return;
     }
+    bool taskWasInList = false;
     m_tasksListLock.lockForWrite();
     if (!m_taskList.empty() && m_taskList.find(cid) != m_taskList.end()) {
-        m_taskList[cid].erase(std::remove(m_taskList[cid].begin(), m_taskList[cid].end(), task), m_taskList[cid].end());
-        if (m_taskList[cid].size() == 0) {
-            m_taskList.erase(cid);
+        auto &tasks = m_taskList[cid];
+        auto it = std::find(tasks.begin(), tasks.end(), task);
+        if (it != tasks.end()) {
+            tasks.erase(it);
+            taskWasInList = true;
+            if (tasks.empty()) {
+                m_taskList.erase(cid);
+            }
         }
     }
     int count = 0;
-    for (const auto &task : m_taskList) {
-        count += task.second.size();
+    for (const auto &t : m_taskList) {
+        count += t.second.size();
     }
     m_tasksListLock.unlock();
     // Set jobs count
     Q_EMIT jobCount(count);
-    task->deleteLater();
+    // Only delete if we owned the task. If it wasn't in our list,
+    // another code path (e.g. discardJobs) already handled cleanup.
+    if (taskWasInList) {
+        task->deleteLater();
+    }
 }
 
 void TaskManager::slotCancelJobs(bool leaveBlocked, const QVector<AbstractTask::JOBTYPE> exceptions)

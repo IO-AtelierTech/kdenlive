@@ -144,7 +144,7 @@ auto CompositionHandler::handleList(const QJsonObject & /*params*/) -> QJsonObje
         compositions.append(compoInfo);
     }
 
-    return QJsonObject{{QStringLiteral("result"), compositions}};
+    return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("compositions"), compositions}}}};
 }
 
 auto CompositionHandler::handleAdd(const QJsonObject &params) -> QJsonObject
