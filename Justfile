@@ -128,6 +128,24 @@ tag version:
 # Octopus Parallel Development
 # ============================================================================
 
+# List available tentacles and their statuses
+tentacles:
+    #!/usr/bin/env bash
+    echo "=== Tentacle Status ==="
+    echo ""
+    if [ -f .octopus/master-todo.md ]; then
+        echo "ACTIVE:"
+        awk '/^## Active Tentacles/,/^## Ready to Spawn/' .octopus/master-todo.md | grep -E '^\| [^-]' | grep -v 'ID.*Description' || echo "  (none)"
+        echo ""
+        echo "READY TO SPAWN:"
+        grep -E '^### t[0-9]+-' .octopus/master-todo.md | sed 's/### /  /' | sed 's/:/: /'
+        echo ""
+        echo "COMPLETED:"
+        awk '/^## Completed Tentacles/,/^---/' .octopus/master-todo.md | grep -E '^\| [^-]' | grep -v 'ID.*Description' | sed 's/|//g' | awk '{$1=$1};1' | sed 's/^/  /' || echo "  (none)"
+    else
+        echo "No .octopus/master-todo.md found"
+    fi
+
 # Show octopus status
 octopus-status:
     @bash ~/.claude/skills/octopus-dev/scripts/status.sh 2>/dev/null || echo "Octopus scripts not found"
