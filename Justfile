@@ -183,7 +183,9 @@ tentacle-spawn id:
     # Extract description from header line
     desc=$(grep "^### {{id}}:" .octopus/master-todo.md | sed 's/^### {{id}}: //')
     # Extract scope (lines between **Scope:** and next **)
-    scope=$(awk '/^### {{id}}:/,/^---$/' .octopus/master-todo.md | awk '/^\*\*Scope:\*\*/,/^\*\*/' | grep -E '^- ' | sed 's/^- //' | tr '\n' ',' | sed 's/,$//')
+    scope=$(awk '/^### {{id}}:/,/^---$/' .octopus/master-todo.md | awk '/^\*\*Scope:\*\*$/,/^\*\*[^S]/' | grep -E '^- ' | sed 's/^- //' | tr '\n' ',' | sed 's/,$//')
+    # Extract tasks
+    tasks=$(awk '/^### {{id}}:/,/^---$/' .octopus/master-todo.md | awk '/^\*\*Tasks:\*\*$/,/^\*\*[^T]|^$/' | grep -E '^[0-9]+\.' | sed 's/^/- [ ] /')
     # Create worktree
     worktree_path=".worktrees/{{id}}"
     branch="tentacle/{{id}}"
@@ -200,8 +202,6 @@ tentacle-spawn id:
     echo "  Branch: $branch"
     echo "  Path: $worktree_path"
     git worktree add -b "$branch" "$worktree_path" feature/websocket
-    # Extract tasks
-    tasks=$(awk '/^### {{id}}:/,/^---$/' .octopus/master-todo.md | awk '/^\*\*Tasks:\*\*/,/^\*\*|^---/' | grep -E '^[0-9]+\.' | sed 's/^/- [ ] /')
     # Create TODO.md in worktree
     {
         echo "# Tentacle: {{id}}"
