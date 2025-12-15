@@ -1,0 +1,1683 @@
+{
+  // Kdenlive WebSocket RPC API Schema
+  // Version: 1.0.0
+  // This is the single source of truth for the RPC interface.
+  // Both the C++ server and Python client should conform to this schema.
+
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Kdenlive RPC API",
+  "version": "1.0.0",
+  "transport": "WebSocket",
+  "protocol": "JSON-RPC 2.0",
+
+  // ============================================================================
+  // ERROR CODES
+  // ============================================================================
+  "errors": {
+    // Standard JSON-RPC 2.0 errors
+    "ParseError":      { "code": -32700, "description": "Invalid JSON" },
+    "InvalidRequest":  { "code": -32600, "description": "Not a valid request object" },
+    "MethodNotFound":  { "code": -32601, "description": "Method does not exist" },
+    "InvalidParams":   { "code": -32602, "description": "Invalid method parameters" },
+    "InternalError":   { "code": -32603, "description": "Internal JSON-RPC error" },
+
+    // Kdenlive-specific errors (-32001 to -32099)
+    "ProjectNotOpen":     { "code": -32001, "description": "No project is currently open" },
+    "ClipNotFound":       { "code": -32002, "description": "Referenced clip not found" },
+    "TrackNotFound":      { "code": -32003, "description": "Referenced track not found" },
+    "EffectNotFound":     { "code": -32004, "description": "Referenced effect not found" },
+    "RenderInProgress":   { "code": -32005, "description": "Cannot start render while one is active" },
+    "InvalidPath":        { "code": -32006, "description": "Invalid file path" },
+    "OperationFailed":    { "code": -32007, "description": "Generic operation failure" },
+    "Unauthorized":       { "code": -32008, "description": "Authentication required or failed" },
+    "ApplicationClosing": { "code": -32009, "description": "Application is shutting down" },
+    "TimelineNotReady":   { "code": -32010, "description": "Timeline not initialized or transitioning" },
+    "WindowNotAvailable": { "code": -32011, "description": "Main window not available" }
+  },
+
+  // ============================================================================
+  // COMMON TYPES
+  // ============================================================================
+  "types": {
+    "TrackType": {
+      "type": "string",
+      "enum": ["video", "audio"],
+      "description": "Type of timeline track"
+    },
+
+    "ClipType": {
+      "type": "integer",
+      "description": "Clip type enumeration from Kdenlive",
+      "values": {
+        "0": "Unknown",
+        "1": "Audio",
+        "2": "Video",
+        "3": "AV",
+        "4": "Color",
+        "5": "Image",
+        "6": "Text",
+        "7": "SlideShow",
+        "8": "Virtual",
+        "9": "Playlist",
+        "10": "WebVfx",
+        "11": "TextTemplate",
+        "12": "QText",
+        "13": "Composition",
+        "14": "Track",
+        "15": "Qml",
+        "16": "Animation",
+        "17": "Timeline"
+      }
+    },
+
+    "RenderStatus": {
+      "type": "string",
+      "enum": ["waiting", "running", "done", "error"],
+      "description": "Status of a render job"
+    },
+
+    "BinClipInfo": {
+      "type": "object",
+      "description": "Information about a clip in the project bin",
+      "properties": {
+        "id":       { "type": "string", "description": "Unique bin clip ID" },
+        "name":     { "type": "string", "description": "Display name" },
+        "type":     { "$ref": "#/types/ClipType" },
+        "url":      { "type": "string", "description": "File path or URL" },
+        "duration": { "type": "integer", "description": "Duration in frames" },
+        "hasAudio": { "type": "boolean" },
+        "hasVideo": { "type": "boolean" },
+        "loading":  { "type": "boolean", "description": "True if clip is still loading" }
+      }
+    },
+
+    "BinClipDetailedInfo": {
+      "type": "object",
+      "description": "Detailed clip information",
+      "properties": {
+        "id":       { "type": "string" },
+        "name":     { "type": "string" },
+        "type":     { "$ref": "#/types/ClipType" },
+        "url":      { "type": "string" },
+        "duration": { "type": "integer" },
+        "hasAudio": { "type": "boolean" },
+        "hasVideo": { "type": "boolean" },
+        "width":    { "type": "integer" },
+        "height":   { "type": "integer" },
+        "fps":      { "type": "number" },
+        "folderId": { "type": "string", "nullable": true },
+        "loading":  { "type": "boolean" }
+      }
+    },
+
+    "TimelineClipInfo": {
+      "type": "object",
+      "description": "Information about a clip on the timeline",
+      "properties": {
+        "id":       { "type": "integer", "description": "Timeline clip ID" },
+        "binId":    { "type": "string", "description": "Reference to bin clip" },
+        "trackId":  { "type": "integer" },
+        "position": { "type": "integer", "description": "Position in frames" },
+        "duration": { "type": "integer", "description": "Duration in frames" },
+        "in":       { "type": "integer", "description": "In point within source" },
+        "out":      { "type": "integer", "description": "Out point within source (exclusive)" }
+      }
+    },
+
+    "TrackInfo": {
+      "type": "object",
+      "description": "Information about a timeline track",
+      "properties": {
+        "id":       { "type": "integer", "description": "Track ID" },
+        "name":     { "type": "string", "description": "Track name (can be empty)" },
+        "type":     { "$ref": "#/types/TrackType" },
+        "locked":   { "type": "boolean" },
+        "muted":    { "type": "boolean" },
+        "hidden":   { "type": "boolean" },
+        "position": { "type": "integer", "description": "Visual position (0 = bottom)" }
+      }
+    },
+
+    "EffectInfo": {
+      "type": "object",
+      "description": "Information about an effect on a clip",
+      "properties": {
+        "index":   { "type": "integer", "description": "Position in effect stack" },
+        "id":      { "type": "string", "description": "Effect asset ID" },
+        "name":    { "type": "string", "description": "Display name" },
+        "enabled": { "type": "boolean" }
+      }
+    },
+
+    "MarkerInfo": {
+      "type": "object",
+      "description": "Clip marker information",
+      "properties": {
+        "id":       { "type": "integer", "description": "Marker ID (same as position)" },
+        "position": { "type": "integer", "description": "Position in frames" },
+        "comment":  { "type": "string" },
+        "type":     { "type": "integer", "description": "Marker category/color" }
+      }
+    },
+
+    "KeyframeInfo": {
+      "type": "object",
+      "description": "Effect keyframe",
+      "properties": {
+        "position": { "type": "integer", "description": "Frame position" },
+        "value":    { "type": "number", "description": "Parameter value" }
+      }
+    },
+
+    "FolderInfo": {
+      "type": "object",
+      "properties": {
+        "id":       { "type": "string" },
+        "name":     { "type": "string" },
+        "parentId": { "type": "string", "nullable": true }
+      }
+    },
+
+    "RenderPresetInfo": {
+      "type": "object",
+      "properties": {
+        "id":        { "type": "string" },
+        "name":      { "type": "string" },
+        "extension": { "type": "string" }
+      }
+    },
+
+    "RenderJobInfo": {
+      "type": "object",
+      "properties": {
+        "jobId":    { "type": "string" },
+        "status":   { "$ref": "#/types/RenderStatus" },
+        "progress": { "type": "integer", "description": "0-100" },
+        "output":   { "type": "string", "description": "Output file path" }
+      }
+    },
+
+    "CompositionInfo": {
+      "type": "object",
+      "properties": {
+        "id":       { "type": "integer" },
+        "type":     { "type": "string", "description": "Composition type/name" },
+        "trackId":  { "type": "integer" },
+        "position": { "type": "integer" },
+        "duration": { "type": "integer" },
+        "aTrack":   { "type": "integer", "description": "Target track for composition" }
+      }
+    }
+  },
+
+  // ============================================================================
+  // METHODS
+  // ============================================================================
+  "methods": {
+
+    // --------------------------------------------------------------------------
+    // rpc.* - Connection & Discovery
+    // --------------------------------------------------------------------------
+    "rpc": {
+      "ping": {
+        "description": "Health check endpoint",
+        "params": {},
+        "result": {
+          "pong": { "type": "boolean", "value": true }
+        },
+        "errors": []
+      },
+
+      "getVersion": {
+        "description": "Get Kdenlive and RPC API version",
+        "params": {},
+        "result": {
+          "kdenlive": { "type": "string", "description": "Kdenlive version" },
+          "rpc":      { "type": "string", "description": "RPC API version" }
+        },
+        "errors": []
+      },
+
+      "getCapabilities": {
+        "description": "List all available methods and events",
+        "params": {},
+        "result": {
+          "methods": { "type": "array", "items": "string" },
+          "events":  { "type": "array", "items": "string" }
+        },
+        "errors": []
+      },
+
+      "subscribe": {
+        "description": "Subscribe to event notifications",
+        "params": {
+          "required": {
+            "events": {
+              "type": "string | string[]",
+              "description": "Event type(s) to subscribe to"
+            }
+          }
+        },
+        "result": {
+          "subscribed": { "type": "array", "items": "string" }
+        },
+        "errors": ["InvalidParams"]
+      },
+
+      "unsubscribe": {
+        "description": "Unsubscribe from event notifications",
+        "params": {
+          "required": {
+            "events": { "type": "string | string[]" }
+          }
+        },
+        "result": {
+          "unsubscribed": { "type": "array", "items": "string" }
+        },
+        "errors": ["InvalidParams"]
+      }
+    },
+
+    // --------------------------------------------------------------------------
+    // project.* - Project Management
+    // --------------------------------------------------------------------------
+    "project": {
+      "getInfo": {
+        "description": "Get current project information",
+        "params": {},
+        "result": {
+          "path":     { "type": "string" },
+          "name":     { "type": "string" },
+          "modified": { "type": "boolean" },
+          "fps":      { "type": "number" },
+          "width":    { "type": "integer" },
+          "height":   { "type": "integer" }
+        },
+        "errors": ["ProjectNotOpen", "ApplicationClosing"]
+      },
+
+      "open": {
+        "description": "Open a project file",
+        "params": {
+          "required": {
+            "path": { "type": "string", "description": "Absolute path to .kdenlive file" }
+          }
+        },
+        "result": {
+          "opened": { "type": "boolean" },
+          "path":   { "type": "string" }
+        },
+        "errors": ["InvalidParams", "InvalidPath", "ApplicationClosing"],
+        "notes": "Async: Returns immediately. Poll project.getInfo or wait for project.opened event."
+      },
+
+      "save": {
+        "description": "Save current project",
+        "params": {
+          "optional": {
+            "path": { "type": "string", "description": "Save to new path (Save As)" }
+          }
+        },
+        "result": {
+          "saved": { "type": "boolean" },
+          "path":  { "type": "string" }
+        },
+        "errors": ["ProjectNotOpen", "OperationFailed", "ApplicationClosing"]
+      },
+
+      "close": {
+        "description": "Close current project",
+        "params": {
+          "optional": {
+            "saveChanges": { "type": "boolean", "default": false }
+          }
+        },
+        "result": {
+          "closed": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "OperationFailed", "ApplicationClosing"],
+        "notes": "Async: Returns immediately. Wait for project.closed event."
+      },
+
+      "new": {
+        "description": "Create a new empty project",
+        "params": {
+          "optional": {
+            "profile": { "type": "string", "description": "MLT profile name" }
+          }
+        },
+        "result": {
+          "created": { "type": "boolean" }
+        },
+        "errors": ["ApplicationClosing"],
+        "notes": "Async: Returns immediately."
+      },
+
+      "undo": {
+        "description": "Undo last action",
+        "params": {},
+        "result": {
+          "undone": { "type": "boolean" },
+          "action": { "type": "string", "description": "Description of undone action" }
+        },
+        "errors": ["ApplicationClosing", "OperationFailed"]
+      },
+
+      "redo": {
+        "description": "Redo last undone action",
+        "params": {},
+        "result": {
+          "redone": { "type": "boolean" },
+          "action": { "type": "string", "description": "Description of redone action" }
+        },
+        "errors": ["ApplicationClosing", "OperationFailed"]
+      }
+    },
+
+    // --------------------------------------------------------------------------
+    // timeline.* - Timeline Operations
+    // --------------------------------------------------------------------------
+    "timeline": {
+      "getInfo": {
+        "description": "Get timeline information",
+        "params": {},
+        "result": {
+          "duration":        { "type": "integer", "description": "Total duration in frames" },
+          "trackCount":      { "type": "integer" },
+          "fps":             { "type": "number" },
+          "profile":         { "type": "string" },
+          "audioTrackCount": { "type": "integer" },
+          "videoTrackCount": { "type": "integer" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "getTracks": {
+        "description": "List all tracks",
+        "params": {},
+        "result": {
+          "type": "array",
+          "items": { "$ref": "#/types/TrackInfo" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "getClips": {
+        "description": "List clips on timeline",
+        "params": {
+          "optional": {
+            "trackId": { "type": "integer", "description": "Filter by track" }
+          }
+        },
+        "result": {
+          "type": "array",
+          "items": { "$ref": "#/types/TimelineClipInfo" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "getClip": {
+        "description": "Get detailed clip information",
+        "params": {
+          "required": {
+            "clipId": { "type": "integer" }
+          }
+        },
+        "result": {
+          "id":       { "type": "integer" },
+          "binId":    { "type": "string" },
+          "trackId":  { "type": "integer" },
+          "position": { "type": "integer" },
+          "duration": { "type": "integer" },
+          "in":       { "type": "integer" },
+          "out":      { "type": "integer" },
+          "speed":    { "type": "number" },
+          "name":     { "type": "string" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "ClipNotFound", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "insertClip": {
+        "description": "Insert a bin clip onto the timeline",
+        "params": {
+          "required": {
+            "binId":    { "type": "string", "description": "Bin clip ID" },
+            "trackId":  { "type": "integer" },
+            "position": { "type": "integer", "description": "Position in frames" }
+          }
+        },
+        "result": {
+          "clipId":        { "type": "integer", "description": "Created timeline clip ID" },
+          "linkedClipIds": { "type": "array", "items": "integer", "description": "IDs of linked clips (for AV)" },
+          "audioClipId":   { "type": "integer", "nullable": true },
+          "videoClipId":   { "type": "integer", "nullable": true }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "InvalidParams", "TrackNotFound", "ClipNotFound", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"],
+        "notes": "Automatically handles AV splitting and track compatibility."
+      },
+
+      "moveClip": {
+        "description": "Move a clip to new position/track",
+        "params": {
+          "required": {
+            "clipId":   { "type": "integer" },
+            "position": { "type": "integer" }
+          },
+          "optional": {
+            "trackId": { "type": "integer", "description": "Move to different track" }
+          }
+        },
+        "result": {
+          "moved": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "ClipNotFound", "InvalidParams", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "deleteClip": {
+        "description": "Delete a single clip",
+        "params": {
+          "required": {
+            "clipId": { "type": "integer" }
+          }
+        },
+        "result": {
+          "deleted": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "ClipNotFound", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "deleteClips": {
+        "description": "Delete multiple clips",
+        "params": {
+          "required": {
+            "clipIds": { "type": "array", "items": "integer" }
+          }
+        },
+        "result": {
+          "count": { "type": "integer", "description": "Number of clips deleted" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "InvalidParams", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "resizeClip": {
+        "description": "Resize a clip's in/out points",
+        "params": {
+          "required": {
+            "clipId": { "type": "integer" }
+          },
+          "optional": {
+            "in":  { "type": "integer", "description": "New in point" },
+            "out": { "type": "integer", "description": "New out point (exclusive)" }
+          }
+        },
+        "result": {
+          "resized": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "ClipNotFound", "InvalidParams", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"],
+        "notes": "At least one of 'in' or 'out' must be provided. Duration = out - in."
+      },
+
+      "splitClip": {
+        "description": "Split a clip at a position",
+        "params": {
+          "required": {
+            "clipId":   { "type": "integer" },
+            "position": { "type": "integer", "description": "Frame position to split at" }
+          }
+        },
+        "result": {
+          "parts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "clipId":   { "type": "integer" },
+                "position": { "type": "integer" },
+                "duration": { "type": "integer" }
+              }
+            }
+          }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "ClipNotFound", "InvalidParams", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "seek": {
+        "description": "Move playhead to position",
+        "params": {
+          "required": {
+            "position": { "type": "integer" }
+          }
+        },
+        "result": {
+          "position": { "type": "integer" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "InvalidParams", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "getPosition": {
+        "description": "Get current playhead position",
+        "params": {},
+        "result": {
+          "position": { "type": "integer" },
+          "duration": { "type": "integer" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "addTrack": {
+        "description": "Add a new track",
+        "params": {
+          "optional": {
+            "type":     { "$ref": "#/types/TrackType", "default": "video" },
+            "position": { "type": "integer", "description": "Insert position" }
+          }
+        },
+        "result": {
+          "trackId": { "type": "integer" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "deleteTrack": {
+        "description": "Delete a track",
+        "params": {
+          "required": {
+            "trackId": { "type": "integer" }
+          }
+        },
+        "result": {
+          "deleted": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "TrackNotFound", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "setTrackProperty": {
+        "description": "Set a track property",
+        "params": {
+          "required": {
+            "trackId":  { "type": "integer" },
+            "property": {
+              "type": "string",
+              "enum": ["name", "locked", "muted", "hidden"],
+              "description": "Property to set"
+            },
+            "value": {
+              "type": "any",
+              "description": "string for 'name', boolean for others"
+            }
+          }
+        },
+        "result": {
+          "set": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "TrackNotFound", "InvalidParams", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "getSelection": {
+        "description": "Get currently selected items",
+        "params": {},
+        "result": {
+          "clipIds":        { "type": "array", "items": "integer" },
+          "compositionIds": { "type": "array", "items": "integer" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "setSelection": {
+        "description": "Set timeline selection",
+        "params": {
+          "required": {
+            "clipIds": { "type": "array", "items": "integer" }
+          }
+        },
+        "result": {
+          "selected": { "type": "integer", "description": "Number of items selected" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "WindowNotAvailable", "ApplicationClosing"]
+      }
+    },
+
+    // --------------------------------------------------------------------------
+    // bin.* - Project Bin
+    // --------------------------------------------------------------------------
+    "bin": {
+      "listClips": {
+        "description": "List all clips in the bin",
+        "params": {
+          "optional": {
+            "folderId": { "type": "string", "description": "Filter by folder" }
+          }
+        },
+        "result": {
+          "type": "array",
+          "items": { "$ref": "#/types/BinClipInfo" }
+        },
+        "errors": ["ProjectNotOpen", "ApplicationClosing"]
+      },
+
+      "listFolders": {
+        "description": "List all folders in the bin",
+        "params": {},
+        "result": {
+          "type": "array",
+          "items": { "$ref": "#/types/FolderInfo" }
+        },
+        "errors": ["ProjectNotOpen", "ApplicationClosing"]
+      },
+
+      "getClipInfo": {
+        "description": "Get detailed clip information",
+        "params": {
+          "required": {
+            "clipId": { "type": "string" }
+          }
+        },
+        "result": { "$ref": "#/types/BinClipDetailedInfo" },
+        "errors": ["ProjectNotOpen", "ClipNotFound", "ApplicationClosing"],
+        "notes": "Returns loading:true with placeholder values if clip still loading. Poll to check when ready."
+      },
+
+      "importClip": {
+        "description": "Import a single media file",
+        "params": {
+          "required": {
+            "url": { "type": "string", "description": "File path or URL" }
+          },
+          "optional": {
+            "folderId": { "type": "string", "description": "Target folder" }
+          }
+        },
+        "result": {
+          "clipId": { "type": "string" }
+        },
+        "errors": ["ProjectNotOpen", "InvalidParams", "InvalidPath", "OperationFailed", "ApplicationClosing"],
+        "notes": "Async: Returns immediately. Clip loads in background. Poll bin.getClipInfo checking 'loading' field."
+      },
+
+      "importClips": {
+        "description": "Import multiple media files",
+        "params": {
+          "required": {
+            "urls": { "type": "array", "items": "string" }
+          },
+          "optional": {
+            "folderId": { "type": "string" }
+          }
+        },
+        "result": {
+          "clipIds": { "type": "array", "items": "string" }
+        },
+        "errors": ["ProjectNotOpen", "InvalidParams", "ApplicationClosing"],
+        "notes": "Async: All clips import and load in parallel. Do NOT import same file multiple times in single call."
+      },
+
+      "deleteClip": {
+        "description": "Delete a clip from the bin",
+        "params": {
+          "required": {
+            "clipId": { "type": "string" }
+          }
+        },
+        "result": {
+          "deleted": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "ClipNotFound", "InvalidParams", "OperationFailed", "ApplicationClosing"]
+      },
+
+      "deleteClips": {
+        "description": "Delete multiple clips from the bin",
+        "params": {
+          "required": {
+            "clipIds": { "type": "array", "items": "string" }
+          }
+        },
+        "result": {
+          "count": { "type": "integer" }
+        },
+        "errors": ["ProjectNotOpen", "InvalidParams", "ApplicationClosing"]
+      },
+
+      "createFolder": {
+        "description": "Create a new folder",
+        "params": {
+          "required": {
+            "name": { "type": "string" }
+          },
+          "optional": {
+            "parentId": { "type": "string" }
+          }
+        },
+        "result": {
+          "folderId": { "type": "string" }
+        },
+        "errors": ["ProjectNotOpen", "InvalidParams", "OperationFailed", "ApplicationClosing"]
+      },
+
+      "deleteFolder": {
+        "description": "Delete a folder",
+        "params": {
+          "required": {
+            "folderId": { "type": "string" }
+          }
+        },
+        "result": {
+          "deleted": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "InvalidParams", "ClipNotFound", "OperationFailed", "ApplicationClosing"]
+      },
+
+      "renameItem": {
+        "description": "Rename a clip or folder",
+        "params": {
+          "required": {
+            "itemId": { "type": "string" },
+            "name":   { "type": "string" }
+          }
+        },
+        "result": {
+          "renamed": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "InvalidParams", "ClipNotFound", "OperationFailed", "ApplicationClosing"],
+        "notes": "Fails if item is still loading."
+      },
+
+      "moveItem": {
+        "description": "Move a clip or folder to a different folder",
+        "params": {
+          "required": {
+            "itemId":   { "type": "string" },
+            "folderId": { "type": "string" }
+          }
+        },
+        "result": {
+          "moved": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "InvalidParams", "ClipNotFound", "OperationFailed", "ApplicationClosing"],
+        "notes": "Fails if item is still loading."
+      },
+
+      "getClipMarkers": {
+        "description": "Get all markers on a clip",
+        "params": {
+          "required": {
+            "clipId": { "type": "string" }
+          }
+        },
+        "result": {
+          "markers": { "type": "array", "items": { "$ref": "#/types/MarkerInfo" } },
+          "loading": { "type": "boolean", "description": "True if clip still loading" }
+        },
+        "errors": ["ProjectNotOpen", "InvalidParams", "ClipNotFound", "ApplicationClosing"]
+      },
+
+      "addClipMarker": {
+        "description": "Add a marker to a clip",
+        "params": {
+          "required": {
+            "clipId":   { "type": "string" },
+            "position": { "type": "integer" }
+          },
+          "optional": {
+            "comment": { "type": "string", "default": "" },
+            "type":    { "type": "integer", "default": 0, "description": "Marker category" }
+          }
+        },
+        "result": {
+          "markerId": { "type": "integer", "description": "Same as position" }
+        },
+        "errors": ["ProjectNotOpen", "InvalidParams", "ClipNotFound", "OperationFailed", "ApplicationClosing"],
+        "notes": "Fails if clip is still loading."
+      },
+
+      "deleteClipMarker": {
+        "description": "Delete a marker from a clip",
+        "params": {
+          "required": {
+            "clipId":   { "type": "string" },
+            "markerId": { "type": "integer", "aliases": ["position"] }
+          }
+        },
+        "result": {
+          "deleted": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "InvalidParams", "ClipNotFound", "OperationFailed", "ApplicationClosing"],
+        "notes": "Fails if clip is still loading. Accepts 'position' as alias for 'markerId'."
+      }
+    },
+
+    // --------------------------------------------------------------------------
+    // effect.* - Effects Management
+    // --------------------------------------------------------------------------
+    "effect": {
+      "listAvailable": {
+        "description": "List all available effects",
+        "params": {
+          "optional": {
+            "type":     { "type": "string", "description": "Filter by type" },
+            "category": { "type": "string", "description": "Filter by category" }
+          }
+        },
+        "result": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id":       { "type": "string" },
+              "name":     { "type": "string" },
+              "type":     { "type": "string" },
+              "category": { "type": "string" }
+            }
+          }
+        },
+        "errors": []
+      },
+
+      "getInfo": {
+        "description": "Get effect metadata and parameters",
+        "params": {
+          "required": {
+            "effectId": { "type": "string" }
+          }
+        },
+        "result": {
+          "id":          { "type": "string" },
+          "name":        { "type": "string" },
+          "type":        { "type": "string" },
+          "category":    { "type": "string" },
+          "description": { "type": "string" },
+          "parameters":  { "type": "object" }
+        },
+        "errors": ["EffectNotFound"]
+      },
+
+      "add": {
+        "description": "Add an effect to a timeline clip",
+        "params": {
+          "required": {
+            "clipId":   { "type": "integer", "description": "Timeline clip ID" },
+            "effectId": { "type": "string", "description": "Effect asset ID" }
+          }
+        },
+        "result": {
+          "effectIndex": { "type": "integer" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "ClipNotFound", "InvalidParams", "EffectNotFound", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "remove": {
+        "description": "Remove an effect from a clip",
+        "params": {
+          "required": {
+            "clipId": { "type": "integer" }
+          },
+          "oneOf": [
+            { "effectIndex": { "type": "integer" } },
+            { "effectId": { "type": "string" } }
+          ]
+        },
+        "result": {
+          "deleted": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "ClipNotFound", "InvalidParams", "EffectNotFound", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "getClipEffects": {
+        "description": "List all effects on a clip",
+        "params": {
+          "required": {
+            "clipId": { "type": "integer" }
+          }
+        },
+        "result": {
+          "type": "array",
+          "items": { "$ref": "#/types/EffectInfo" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "ClipNotFound", "InvalidParams", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "getProperty": {
+        "description": "Get an effect parameter value",
+        "params": {
+          "required": {
+            "clipId":   { "type": "integer" },
+            "property": { "type": "string" }
+          },
+          "oneOf": [
+            { "effectIndex": { "type": "integer" } },
+            { "effectId": { "type": "string" } }
+          ]
+        },
+        "result": {
+          "value": { "type": "any" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "ClipNotFound", "InvalidParams", "EffectNotFound", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "setProperty": {
+        "description": "Set an effect parameter value",
+        "params": {
+          "required": {
+            "clipId":   { "type": "integer" },
+            "property": { "type": "string" },
+            "value":    { "type": "any" }
+          },
+          "oneOf": [
+            { "effectIndex": { "type": "integer" } },
+            { "effectId": { "type": "string" } }
+          ]
+        },
+        "result": {
+          "updated": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "ClipNotFound", "InvalidParams", "EffectNotFound", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "enable": {
+        "description": "Enable an effect",
+        "params": {
+          "required": {
+            "clipId": { "type": "integer" }
+          },
+          "oneOf": [
+            { "effectIndex": { "type": "integer" } },
+            { "effectId": { "type": "string" } }
+          ]
+        },
+        "result": {
+          "enabled": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "ClipNotFound", "InvalidParams", "EffectNotFound", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "disable": {
+        "description": "Disable an effect",
+        "params": {
+          "required": {
+            "clipId": { "type": "integer" }
+          },
+          "oneOf": [
+            { "effectIndex": { "type": "integer" } },
+            { "effectId": { "type": "string" } }
+          ]
+        },
+        "result": {
+          "enabled": { "type": "boolean", "value": false }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "ClipNotFound", "InvalidParams", "EffectNotFound", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "reorder": {
+        "description": "Reorder effects on a clip",
+        "params": {
+          "required": {
+            "clipId":   { "type": "integer" },
+            "oldIndex": { "type": "integer" },
+            "newIndex": { "type": "integer" }
+          }
+        },
+        "result": {
+          "reordered": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "ClipNotFound", "InvalidParams", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "copyToClips": {
+        "description": "Copy an effect to multiple clips",
+        "params": {
+          "required": {
+            "sourceClipId":  { "type": "integer" },
+            "targetClipIds": { "type": "array", "items": "integer" }
+          },
+          "oneOf": [
+            { "effectIndex": { "type": "integer" } },
+            { "effectId": { "type": "string" } }
+          ]
+        },
+        "result": {
+          "count": { "type": "integer", "description": "Number of clips where effect was copied" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "ClipNotFound", "InvalidParams", "EffectNotFound", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "getKeyframes": {
+        "description": "Get keyframes for an effect property",
+        "params": {
+          "required": {
+            "clipId":   { "type": "integer" },
+            "property": { "type": "string" }
+          },
+          "oneOf": [
+            { "effectIndex": { "type": "integer" } },
+            { "effectId": { "type": "string" } }
+          ]
+        },
+        "result": {
+          "keyframes": {
+            "type": "array",
+            "items": { "$ref": "#/types/KeyframeInfo" }
+          }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "ClipNotFound", "InvalidParams", "EffectNotFound", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "setKeyframe": {
+        "description": "Set a keyframe value",
+        "params": {
+          "required": {
+            "clipId":   { "type": "integer" },
+            "property": { "type": "string" },
+            "position": { "type": "integer" },
+            "value":    { "type": "number" }
+          },
+          "oneOf": [
+            { "effectIndex": { "type": "integer" } },
+            { "effectId": { "type": "string" } }
+          ]
+        },
+        "result": {
+          "set": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "ClipNotFound", "InvalidParams", "EffectNotFound", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "deleteKeyframe": {
+        "description": "Delete a keyframe",
+        "params": {
+          "required": {
+            "clipId":   { "type": "integer" },
+            "property": { "type": "string" },
+            "position": { "type": "integer" }
+          },
+          "oneOf": [
+            { "effectIndex": { "type": "integer" } },
+            { "effectId": { "type": "string" } }
+          ]
+        },
+        "result": {
+          "deleted": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "ClipNotFound", "InvalidParams", "EffectNotFound", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "deleteAllKeyframes": {
+        "description": "Delete all keyframes for an effect property",
+        "params": {
+          "required": {
+            "clipId":   { "type": "integer" },
+            "property": { "type": "string" }
+          },
+          "oneOf": [
+            { "effectIndex": { "type": "integer" } },
+            { "effectId": { "type": "string" } }
+          ]
+        },
+        "result": {
+          "deleted": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "ClipNotFound", "InvalidParams", "EffectNotFound", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"]
+      }
+    },
+
+    // --------------------------------------------------------------------------
+    // render.* - Rendering
+    // --------------------------------------------------------------------------
+    "render": {
+      "getPresets": {
+        "description": "List available render presets",
+        "params": {},
+        "result": {
+          "type": "array",
+          "items": { "$ref": "#/types/RenderPresetInfo" }
+        },
+        "errors": []
+      },
+
+      "getPresetInfo": {
+        "description": "Get detailed preset information",
+        "params": {
+          "required": {
+            "presetId": { "type": "string" }
+          }
+        },
+        "result": {
+          "id":                  { "type": "string" },
+          "name":                { "type": "string" },
+          "extension":           { "type": "string" },
+          "videoCodec":          { "type": "string" },
+          "audioCodec":          { "type": "string" },
+          "defaultVideoQuality": { "type": "integer" },
+          "defaultAudioQuality": { "type": "integer" }
+        },
+        "errors": ["OperationFailed"]
+      },
+
+      "start": {
+        "description": "Start a render job",
+        "params": {
+          "required": {
+            "preset": { "type": "string", "description": "Preset ID" },
+            "output": { "type": "string", "description": "Output file path" }
+          },
+          "optional": {
+            "in":  { "type": "integer", "description": "Start frame" },
+            "out": { "type": "integer", "description": "End frame" }
+          }
+        },
+        "result": {
+          "jobId":      { "type": "string" },
+          "outputPath": { "type": "string" },
+          "started":    { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "InvalidParams", "InvalidPath", "RenderInProgress", "OperationFailed", "ApplicationClosing"]
+      },
+
+      "startWithGuides": {
+        "description": "Start multiple renders based on guide markers",
+        "params": {
+          "required": {
+            "preset":    { "type": "string" },
+            "outputDir": { "type": "string", "description": "Output directory" }
+          }
+        },
+        "result": {
+          "jobIds": { "type": "array", "items": "string" }
+        },
+        "errors": ["ProjectNotOpen", "InvalidParams", "InvalidPath", "OperationFailed", "ApplicationClosing"]
+      },
+
+      "stop": {
+        "description": "Stop a specific render job",
+        "params": {
+          "required": {
+            "jobId": { "type": "string" }
+          }
+        },
+        "result": {
+          "stopped": { "type": "boolean" },
+          "jobId":   { "type": "string" }
+        },
+        "errors": ["InvalidParams", "OperationFailed"]
+      },
+
+      "stopAll": {
+        "description": "Stop all active render jobs",
+        "params": {},
+        "result": {
+          "stopped": { "type": "boolean" }
+        },
+        "errors": []
+      },
+
+      "getStatus": {
+        "description": "Get status of a render job",
+        "params": {
+          "required": {
+            "jobId": { "type": "string" }
+          }
+        },
+        "result": {
+          "jobId":       { "type": "string" },
+          "status":      { "$ref": "#/types/RenderStatus" },
+          "progress":    { "type": "integer", "description": "0-100" },
+          "frame":       { "type": "integer" },
+          "totalFrames": { "type": "integer" }
+        },
+        "errors": ["InvalidParams", "OperationFailed"]
+      },
+
+      "getJobs": {
+        "description": "Get all render jobs",
+        "params": {},
+        "result": {
+          "type": "array",
+          "items": { "$ref": "#/types/RenderJobInfo" }
+        },
+        "errors": []
+      },
+
+      "getActiveJob": {
+        "description": "Get currently active render job",
+        "params": {},
+        "result": {
+          "nullable": true,
+          "jobId":       { "type": "string" },
+          "status":      { "$ref": "#/types/RenderStatus" },
+          "progress":    { "type": "integer" },
+          "frame":       { "type": "integer" },
+          "runningJobs": { "type": "integer" }
+        },
+        "errors": []
+      },
+
+      "setOutput": {
+        "description": "Set default output path",
+        "params": {
+          "required": {
+            "outputPath": { "type": "string" }
+          }
+        },
+        "result": {
+          "set": { "type": "boolean" }
+        },
+        "errors": ["InvalidParams", "InvalidPath"]
+      }
+    },
+
+    // --------------------------------------------------------------------------
+    // asset.* - Assets & Presets
+    // --------------------------------------------------------------------------
+    "asset": {
+      "listCategories": {
+        "description": "List effect/transition categories",
+        "params": {},
+        "result": {
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id":   { "type": "string" },
+                "name": { "type": "string" },
+                "type": { "type": "string" }
+              }
+            }
+          }
+        },
+        "errors": []
+      },
+
+      "search": {
+        "description": "Search for effects or transitions",
+        "params": {
+          "required": {
+            "query": { "type": "string" }
+          },
+          "optional": {
+            "type": { "type": "string", "description": "Filter by 'effect' or 'transition'" }
+          }
+        },
+        "result": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id":   { "type": "string" },
+                "name": { "type": "string" },
+                "type": { "type": "string" }
+              }
+            }
+          }
+        },
+        "errors": ["InvalidParams"]
+      },
+
+      "getEffectsByCategory": {
+        "description": "Get all effects in a category",
+        "params": {
+          "required": {
+            "categoryId": { "type": "string", "aliases": ["category"] }
+          }
+        },
+        "result": {
+          "effects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id":          { "type": "string" },
+                "name":        { "type": "string" },
+                "description": { "type": "string" }
+              }
+            }
+          }
+        },
+        "errors": ["InvalidParams"]
+      },
+
+      "getFavorites": {
+        "description": "Get favorite effects/transitions",
+        "params": {},
+        "result": {
+          "favorites": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id":   { "type": "string" },
+                "name": { "type": "string" },
+                "type": { "type": "string" }
+              }
+            }
+          }
+        },
+        "errors": []
+      },
+
+      "addFavorite": {
+        "description": "Add an asset to favorites",
+        "params": {
+          "required": {
+            "assetId": { "type": "string" }
+          },
+          "optional": {
+            "type": { "type": "string", "default": "effect" }
+          }
+        },
+        "result": {
+          "added":   { "type": "boolean" },
+          "assetId": { "type": "string" }
+        },
+        "errors": ["InvalidParams"]
+      },
+
+      "removeFavorite": {
+        "description": "Remove an asset from favorites",
+        "params": {
+          "required": {
+            "assetId": { "type": "string" }
+          },
+          "optional": {
+            "type": { "type": "string", "default": "effect" }
+          }
+        },
+        "result": {
+          "removed": { "type": "boolean" },
+          "assetId": { "type": "string" }
+        },
+        "errors": ["InvalidParams"]
+      },
+
+      "getPresets": {
+        "description": "Get presets for an effect",
+        "params": {
+          "required": {
+            "effectId": { "type": "string" }
+          }
+        },
+        "result": {
+          "presets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name":   { "type": "string" },
+                "params": { "type": "object" }
+              }
+            }
+          }
+        },
+        "errors": ["InvalidParams"]
+      },
+
+      "savePreset": {
+        "description": "Save effect parameters as a preset",
+        "params": {
+          "required": {
+            "effectId": { "type": "string" },
+            "name":     { "type": "string", "aliases": ["presetName"] }
+          },
+          "optional": {
+            "params": { "type": "object", "description": "Parameter values" }
+          }
+        },
+        "result": {
+          "saved": { "type": "boolean" },
+          "name":  { "type": "string" }
+        },
+        "errors": ["InvalidParams", "EffectNotFound", "OperationFailed"],
+        "notes": "Accepts 'presetName' as alias for 'name'."
+      },
+
+      "deletePreset": {
+        "description": "Delete a saved preset",
+        "params": {
+          "required": {
+            "effectId":   { "type": "string" },
+            "presetName": { "type": "string" }
+          }
+        },
+        "result": {
+          "deleted":    { "type": "boolean" },
+          "presetName": { "type": "string" }
+        },
+        "errors": ["InvalidParams", "OperationFailed"]
+      }
+    },
+
+    // --------------------------------------------------------------------------
+    // transition.* - Transitions (same-track mixes)
+    // --------------------------------------------------------------------------
+    "transition": {
+      "list": {
+        "description": "List available transition types",
+        "params": {},
+        "result": {
+          "transitions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id":          { "type": "string" },
+                "name":        { "type": "string" },
+                "description": { "type": "string" },
+                "isAudio":     { "type": "boolean" }
+              }
+            }
+          }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "add": {
+        "description": "Add a transition between clips",
+        "params": {
+          "required": {
+            "fromClipId": { "type": "integer", "aliases": ["clipId1"] },
+            "toClipId":   { "type": "integer", "aliases": ["clipId2"] }
+          },
+          "optional": {
+            "type":     { "type": "string", "default": "luma", "aliases": ["transitionId"] },
+            "duration": { "type": "integer", "description": "Duration in frames" }
+          }
+        },
+        "result": {
+          "added": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "InvalidParams", "ClipNotFound", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"],
+        "notes": "Accepts 'clipId1'/'clipId2' and 'transitionId' as aliases for backwards compatibility."
+      },
+
+      "remove": {
+        "description": "Remove a transition",
+        "params": {
+          "required": {
+            "clipId": { "type": "integer", "description": "Clip that has the mix" }
+          }
+        },
+        "result": {
+          "removed": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "InvalidParams", "ClipNotFound", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "getProperties": {
+        "description": "Get transition properties",
+        "params": {
+          "required": {
+            "clipId": { "type": "integer" }
+          }
+        },
+        "result": {
+          "type":     { "type": "string" },
+          "duration": { "type": "integer" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "InvalidParams", "ClipNotFound", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "setProperty": {
+        "description": "Set transition property",
+        "params": {
+          "required": {
+            "clipId":   { "type": "integer" },
+            "property": { "type": "string", "enum": ["duration", "type", "align"] },
+            "value":    { "type": "any" }
+          }
+        },
+        "result": {
+          "set": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "InvalidParams", "ClipNotFound", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"]
+      }
+    },
+
+    // --------------------------------------------------------------------------
+    // composition.* - Compositions (cross-track)
+    // --------------------------------------------------------------------------
+    "composition": {
+      "list": {
+        "description": "List compositions on timeline",
+        "params": {},
+        "result": {
+          "compositions": {
+            "type": "array",
+            "items": { "$ref": "#/types/CompositionInfo" }
+          }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "add": {
+        "description": "Add a composition",
+        "params": {
+          "required": {
+            "type":     { "type": "string", "aliases": ["transitionId"], "description": "Composition type" },
+            "trackId":  { "type": "integer" },
+            "position": { "type": "integer" }
+          },
+          "optional": {
+            "duration": { "type": "integer" },
+            "aTrack":   { "type": "integer", "description": "Target track" }
+          }
+        },
+        "result": {
+          "compositionId": { "type": "integer" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "InvalidParams", "TrackNotFound", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "remove": {
+        "description": "Remove a composition",
+        "params": {
+          "required": {
+            "compositionId": { "type": "integer" }
+          }
+        },
+        "result": {
+          "removed": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "InvalidParams", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "getProperties": {
+        "description": "Get composition properties",
+        "params": {
+          "required": {
+            "compositionId": { "type": "integer" }
+          }
+        },
+        "result": {
+          "type":     { "type": "string" },
+          "position": { "type": "integer" },
+          "duration": { "type": "integer" },
+          "aTrack":   { "type": "integer" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "InvalidParams", "WindowNotAvailable", "ApplicationClosing"]
+      },
+
+      "setProperty": {
+        "description": "Set composition property",
+        "params": {
+          "required": {
+            "compositionId": { "type": "integer" },
+            "property":      { "type": "string", "enum": ["aTrack", "duration", "position"] },
+            "value":         { "type": "any" }
+          }
+        },
+        "result": {
+          "set": { "type": "boolean" }
+        },
+        "errors": ["ProjectNotOpen", "TimelineNotReady", "InvalidParams", "OperationFailed", "WindowNotAvailable", "ApplicationClosing"]
+      }
+    }
+  },
+
+  // ============================================================================
+  // EVENTS (Notifications)
+  // ============================================================================
+  "events": {
+    "project.opened": {
+      "description": "Emitted when a project is opened",
+      "payload": {
+        "path": { "type": "string" }
+      }
+    },
+
+    "project.closed": {
+      "description": "Emitted when a project is closed",
+      "payload": {}
+    },
+
+    "project.saved": {
+      "description": "Emitted when a project is saved",
+      "payload": {
+        "path": { "type": "string" }
+      }
+    },
+
+    "project.modified": {
+      "description": "Emitted when project modified state changes",
+      "payload": {
+        "modified": { "type": "boolean" }
+      }
+    },
+
+    "timeline.changed": {
+      "description": "Emitted when timeline structure changes",
+      "payload": {}
+    },
+
+    "render.started": {
+      "description": "Emitted when a render job starts",
+      "payload": {
+        "jobId":      { "type": "string" },
+        "outputPath": { "type": "string" }
+      }
+    },
+
+    "render.progress": {
+      "description": "Emitted during render progress updates",
+      "payload": {
+        "jobId":    { "type": "string" },
+        "progress": { "type": "integer", "description": "0-100" },
+        "frame":    { "type": "integer" }
+      }
+    },
+
+    "render.completed": {
+      "description": "Emitted when a render job completes successfully",
+      "payload": {
+        "jobId":      { "type": "string" },
+        "outputPath": { "type": "string" }
+      }
+    },
+
+    "render.error": {
+      "description": "Emitted when a render job fails",
+      "payload": {
+        "jobId": { "type": "string" },
+        "error": { "type": "string" }
+      }
+    }
+  }
+}

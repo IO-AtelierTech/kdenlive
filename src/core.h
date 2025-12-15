@@ -49,6 +49,9 @@ class TextBasedEdit;
 class GuidesList;
 class KeyframeModelList;
 class TimeRemap;
+#ifdef ENABLE_RPC
+class RpcServer;
+#endif
 
 namespace Mlt {
 class Repository;
@@ -152,6 +155,10 @@ public:
     bool currentRemap(const QString &clipId);
     /** @brief Returns a pointer to the audio mixer. */
     MixerManager *mixer();
+#ifdef ENABLE_RPC
+    /** @brief Returns a pointer to the RPC server. */
+    RpcServer *rpcServer();
+#endif
     ToolType::ProjectTool activeTool();
 
     /** @brief Returns a pointer to MLT's repository */
@@ -387,6 +394,9 @@ private:
     GuidesList *m_guidesList{nullptr};
     TimeRemap *m_timeRemapWidget{nullptr};
     MixerManager *m_mixerWidget{nullptr};
+#ifdef ENABLE_RPC
+    RpcServer *m_rpcServer{nullptr};
+#endif
     MediaBrowser *m_mediaBrowser{nullptr};
 
     /** @brief Current project's profile path */
@@ -527,6 +537,8 @@ Q_SIGNALS:
     void gotMissingClipsCount(int total, int used);
     /** @brief Tell the current progress task to stop */
     void stopProgressTask();
+    /** @brief A project clip is about to be deleted - release producer references */
+    void binClipAboutToBeDeleted(const QString &clipId);
     /** @brief A project clip was deleted */
     void binClipDeleted(int cid);
     /** @brief An MLT warning was issued */

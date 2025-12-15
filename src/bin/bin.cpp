@@ -3618,6 +3618,11 @@ void Bin::showClipProperties(const std::shared_ptr<ProjectClip> &clip, bool forc
     if (m_propertiesPanel == nullptr) {
         return;
     }
+    // Don't show properties if document is closing or null
+    auto *doc = pCore->currentDoc();
+    if (!doc || doc->closing) {
+        return;
+    }
     if ((clip == nullptr) || !clip->statusReady() || clip->itemType() == AbstractProjectItem::FolderItem) {
         QList<ClipPropertiesController *> children = m_propertiesPanel->findChildren<ClipPropertiesController *>();
         while (!children.isEmpty()) {
@@ -5744,7 +5749,7 @@ void Bin::checkProjectAudioTracks(QString clipId, int minimumTracksCount)
     }
 }
 
-void Bin::addClipMarker(const QString &binId, const QMap<int, QString> &markersData)
+void Bin::addClipMarker(const QString &binId, const QMap<int, QString> &markersData, int type)
 {
     std::shared_ptr<ProjectClip> clip = getBinClip(binId);
     if (!clip) {
@@ -5767,7 +5772,8 @@ void Bin::addClipMarker(const QString &binId, const QMap<int, QString> &markersD
             markers.insert(p, m.value());
         }
     }
-    clip->getMarkerModel()->addMarkers(markers, KdenliveSettings::default_marker_type());
+    int markerType = (type >= 0) ? type : KdenliveSettings::default_marker_type();
+    clip->getMarkerModel()->addMarkers(markers, markerType);
     if (KdenliveSettings::guidesShowThumbs()) {
         CacheTask::start(ObjectId(KdenliveObjectType::BinClip, binId.toInt(), QUuid()), missingFrames, pCore->guidesList());
     }
@@ -6320,7 +6326,10 @@ void Bin::updateSequenceClip(const QUuid &uuid, std::pair<int, int> durations, i
     const QString binId = m_itemModel->getSequenceId(uuid);
     if (!binId.isEmpty() && m_doc->isModified()) {
         std::shared_ptr<ProjectClip> clip = m_itemModel->getClipByBinID(binId);
-        Q_ASSERT(clip != nullptr);
+        if (!clip) {
+            qWarning() << "updateSequenceClip: clip not found for binId" << binId;
+            return;
+        }
         clip->setProducerProperty(QStringLiteral("kdenlive:maxduration"), QString::number(durations.first));
         if (m_doc->sequenceThumbRequiresRefresh(uuid) || forceUpdate) {
             // Store general sequence properties

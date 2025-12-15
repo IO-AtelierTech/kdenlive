@@ -467,22 +467,22 @@ function getTrackColor(audio, header) {
     property real fontUnit: fontMetrics.font.pointSize
     property int collapsedHeight: Math.max(28, baseUnit * 1.8)
     property int minHeaderWidth: 6 * collapsedHeight
-    property int headerWidth: Math.max(minHeaderWidth, timeline.headerWidth())
-    property bool autoTrackHeight: timeline.autotrackHeight
+    property int headerWidth: Math.max(minHeaderWidth, timeline ? timeline.headerWidth() : minHeaderWidth)
+    property bool autoTrackHeight: timeline ? timeline.autotrackHeight : false
     property color selectedTrackColor: Qt.rgba(activePalette.highlight.r, activePalette.highlight.g, activePalette.highlight.b, 0.2)
     property color frameColor: Qt.rgba(activePalette.shadow.r, activePalette.shadow.g, activePalette.shadow.b, 0.5)
-    property bool autoScrolling: timeline.autoScroll
+    property bool autoScrolling: timeline ? timeline.autoScroll : false
     property bool blockAutoScroll: false
-    property int duration: timeline.duration
+    property int duration: timeline ? timeline.duration : 0
     property color audioColor: Utils.mixColors(activePalette.base, K.KdenliveSettings.thumbColor1, 0.3)
-    property color videoColor: timeline.videoColor
-    property color titleColor: timeline.titleColor
-    property color imageColor: timeline.imageColor
-    property color slideshowColor: timeline.slideshowColor
-    property color lockedColor: timeline.lockedColor
-    property color selectionColor: timeline.selectionColor
-    property color groupColor: timeline.groupColor
-    property int doubleClickInterval: timeline.doubleClickInterval()
+    property color videoColor: timeline ? timeline.videoColor : "blue"
+    property color titleColor: timeline ? timeline.titleColor : "blue"
+    property color imageColor: timeline ? timeline.imageColor : "blue"
+    property color slideshowColor: timeline ? timeline.slideshowColor : "blue"
+    property color lockedColor: timeline ? timeline.lockedColor : "red"
+    property color selectionColor: timeline ? timeline.selectionColor : "red"
+    property color groupColor: timeline ? timeline.groupColor : "yellow"
+    property int doubleClickInterval: timeline ? timeline.doubleClickInterval() : 400
     property int mainItemId: -1
     property int clickFrame: -1
     property int clipBeingDroppedId: -1
@@ -497,17 +497,17 @@ function getTrackColor(audio, header) {
     property int finalSpacerFrame: -1
     property int spacerClickFrame: -1
     property bool spacerGuides: false
-    property real timeScale: timeline.scaleFactor
+    property real timeScale: timeline ? timeline.scaleFactor : 1.0
     property int snapping: (K.KdenliveSettings.snaptopoints && (root.timeScale < 2 * baseUnit)) ? Math.floor(baseUnit / (root.timeScale > 3 ? root.timeScale / 2 : root.timeScale)) : -1
-    property var timelineSelection: timeline.selection
-    property int selectedMix: timeline.selectedMix
+    property var timelineSelection: timeline ? timeline.selection : []
+    property int selectedMix: timeline ? timeline.selectedMix : -1
     property var selectedGuides: []
     property int trackHeight
     property int copiedClip: -1
     property int zoomOnMouse: -1
     property bool zoomOnBar: false // Whether the scaling was done with the zoombar
-    property string addedSequenceName : controller.visibleSequenceName
-    property int viewActiveTrack: timeline.activeTrack
+    property string addedSequenceName : controller ? controller.visibleSequenceName : ""
+    property int viewActiveTrack: timeline ? timeline.activeTrack : -1
     property int wheelAccumulatedDelta: 0
     readonly property int defaultDeltasPerStep: 120
     property bool seekingFinished : proxy ? proxy.seekFinished : true
@@ -517,10 +517,10 @@ function getTrackColor(audio, header) {
     property bool paletteUnchanged: true
     property int maxLabelWidth: 20 * root.baseUnit * Math.sqrt(root.timeScale)
     property bool showSubtitles: false
-    property bool subtitlesWarning: timeline.subtitlesWarning
-    property bool subtitlesLocked: timeline.subtitlesLocked
-    property bool subtitlesDisabled: timeline.subtitlesDisabled
-    property int maxSubLayer: timeline.maxSubLayer
+    property bool subtitlesWarning: timeline ? timeline.subtitlesWarning : false
+    property bool subtitlesLocked: timeline ? timeline.subtitlesLocked : false
+    property bool subtitlesDisabled: timeline ? timeline.subtitlesDisabled : false
+    property int maxSubLayer: timeline ? timeline.maxSubLayer : 0
     property int trackTagWidth: fontMetrics.boundingRect("M").width * ((getAudioTracksCount() > 9) || (trackHeaderRepeater.count - getAudioTracksCount() > 9)  ? 3 : 2)
     property int spacerMinPos: 0
     property int spacerMaxPos: -1
@@ -1535,7 +1535,7 @@ function getTrackColor(audio, header) {
                     width: root.width - root.headerWidth
                     height: Math.round(root.baseUnit * 2.5) + ruler.guideLabelHeight
                     contentX: scrollView.contentX
-                    contentWidth: Math.max(parent.width, timeline.fullDuration * timeScale)
+                    contentWidth: Math.max(parent.width, (timeline ? timeline.fullDuration : 0) * timeScale)
                     interactive: false
                     clip: true
                     onWidthChanged: {
@@ -1600,7 +1600,7 @@ function getTrackColor(audio, header) {
                                 border.width: 1
                                 border.color: root.frameColor
                                 height: subtitleTrack.height / (maxSubLayer + 1)
-                                color: (controller && controller.isSubtitleTrack(timeline.activeTrack) && (timeline.activeSubLayer == index)) ? Qt.tint(getTrackColor(false, false), selectedTrackColor) : getTrackColor(false, false)
+                                color: (controller && timeline && controller.isSubtitleTrack(timeline.activeTrack) && (timeline.activeSubLayer == index)) ? Qt.tint(getTrackColor(false, false), selectedTrackColor) : getTrackColor(false, false)
                             }
                         }
                     }
@@ -1677,7 +1677,7 @@ function getTrackColor(audio, header) {
                         }
                         Item {
                             id: tracksContainerArea
-                            width: Math.max(scrollView.width - vertScroll.width, timeline.fullDuration * timeScale)
+                            width: Math.max(scrollView.width - vertScroll.width, (timeline ? timeline.fullDuration : 0) * timeScale)
                             height: trackHeaders.height + subtitleTrackHeader.height
                             y: subtitleTrack.height
                             //Math.max(trackHeaders.height, scrollView.contentHeight - scrollView.__horizontalScrollBar.height)
@@ -1984,7 +1984,7 @@ function getTrackColor(audio, header) {
                                 }
                             }
                             Text {
-                                property int recState: audiorec.recordState
+                                property int recState: audiorec ? audiorec.recordState : 0
                                 text: i18n("Recording")
                                 anchors.right: parent.right
                                 anchors.rightMargin: 2
@@ -2025,7 +2025,7 @@ function getTrackColor(audio, header) {
                         }
                         height: Math.round(root.baseUnit * 0.7)
                         barMinWidth: root.baseUnit
-                        fitsZoom: timeline.scaleFactor === root.fitZoom() && root.scrollPos() === 0
+                        fitsZoom: timeline ? (timeline.scaleFactor === root.fitZoom() && root.scrollPos() === 0) : false
                         zoomFactor: scrollView.visibleArea.widthRatio
                         onProposeZoomFactor: (proposedValue) => {
                             timeline.scaleFactor = scrollView.width / Math.round(proposedValue * scrollView.contentWidth / root.timeScale)
@@ -2069,12 +2069,12 @@ function getTrackColor(audio, header) {
             }
             Rectangle {
                 id: multicamLine
-                visible: root.activeTool === K.ToolType.MulticamTool && timeline.multicamIn > -1
+                visible: root.activeTool === K.ToolType.MulticamTool && timeline && timeline.multicamIn > -1
                 color: 'purple'
                 width: 3
                 opacity: 1
                 height: tracksContainerArea.height
-                x: timeline.multicamIn * root.timeScale - scrollView.contentX
+                x: (timeline ? timeline.multicamIn : 0) * root.timeScale - scrollView.contentX
                 y: ruler.height
                 Rectangle {
                     // multicam in label
@@ -2205,7 +2205,7 @@ function getTrackColor(audio, header) {
     }
 
     Connections {
-        target: timeline
+        target: timeline ?? null
         function onFrameFormatChanged() {
             ruler.adjustFormat()
         }

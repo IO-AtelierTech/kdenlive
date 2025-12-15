@@ -1,5 +1,67 @@
 ![](data/pics/kdenlive-logo.png)
 
+# Kdenlive WebSocket Fork
+
+[![Build Status](https://github.com/IO-AtelierTech/kdenlive/actions/workflows/build.yml/badge.svg)](https://github.com/IO-AtelierTech/kdenlive/actions/workflows/build.yml)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
+> **This is a fork of Kdenlive** that adds a JSON-RPC 2.0 WebSocket API for automation. The goal is to enable AI-powered and script-based video editing workflows via an MCP (Model Context Protocol) server.
+
+## WebSocket RPC API
+
+This fork exposes **86 methods** across 9 handlers for programmatic control of Kdenlive:
+
+| Namespace | Methods | Purpose |
+|-----------|---------|---------|
+| `rpc.*` | 5 | Connection, discovery, events |
+| `project.*` | 7 | Project lifecycle, undo/redo |
+| `timeline.*` | 17 | Clip manipulation, tracks, playhead |
+| `bin.*` | 14 | Media import, organization |
+| `effect.*` | 14 | Effects, keyframes |
+| `asset.*` | 9 | Effect discovery, presets |
+| `render.*` | 10 | Render jobs, monitoring |
+| `transition.*` | 5 | Same-track transitions |
+| `composition.*` | 5 | Cross-track compositions |
+
+### Quick Start
+
+```python
+import asyncio
+import websockets
+import json
+
+async def main():
+    async with websockets.connect("ws://localhost:9876") as ws:
+        await ws.send(json.dumps({
+            "jsonrpc": "2.0",
+            "method": "rpc.ping",
+            "id": 1
+        }))
+        print(await ws.recv())  # {"jsonrpc":"2.0","result":{"pong":true},"id":1}
+
+asyncio.run(main())
+```
+
+### Documentation
+
+- **API Reference**: [`dev-docs/rpc-api.md`](dev-docs/rpc-api.md)
+- **Schema (Source of Truth)**: [`src/rpc/rpc-schema.json5`](src/rpc/rpc-schema.json5)
+- **Implementation Status**: [`TODO.md`](TODO.md)
+
+### Configuration
+
+RPC settings in Kdenlive: **Settings > Configure Kdenlive > RPC**
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `rpcEnabled` | `true` | Enable/disable server |
+| `rpcPort` | `9876` | WebSocket port |
+| `rpcAuthToken` | (empty) | Optional auth token |
+
+Compile-time disable: `cmake -DENABLE_RPC=OFF ..`
+
+---
+
 # Kdenlive
 
 Kdenlive is a powerful, free and open-source video editor that brings professional-grade video editing capabilities to everyone. Whether you're creating a simple family video or working on a complex project, Kdenlive provides the tools you need to bring your vision to life.

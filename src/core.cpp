@@ -29,6 +29,10 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "profiles/profilerepository.hpp"
 #include "project/dialogs/guideslist.h"
 #include "project/projectmanager.h"
+#ifdef ENABLE_RPC
+#include "rpc/rpcnotifier.h"
+#include "rpc/rpcserver.h"
+#endif
 #include "timeline2/model/timelineitemmodel.hpp"
 #include "timeline2/view/timelinecontroller.h"
 #include "timeline2/view/timelinewidget.h"
@@ -454,6 +458,24 @@ void Core::initGUI(const QString &MltPath, const QUrl &Url, const QStringList &c
     connect(m_projectItemModel.get(), &QAbstractItemModel::dataChanged, m_mainWindow->activeBin(), &Bin::slotItemEdited);
 
     m_monitorManager = new MonitorManager(this);
+
+#ifdef ENABLE_RPC
+    // Initialize RPC server for external control
+    m_rpcServer = new RpcServer(this);
+    m_rpcServer->start();
+
+    // Connect MainWindow render signals to RPC notifier
+    connect(m_mainWindow, &MainWindow::renderProgressChanged, m_rpcServer->notifier(),
+            [this](const QString &url, int progress, int frame) { m_rpcServer->notifier()->notifyRenderProgress(url, progress, frame); });
+    connect(m_mainWindow, &MainWindow::renderFinished, m_rpcServer->notifier(), [this](const QString &url, int status, const QString &error) {
+        if (status == 0) {
+            m_rpcServer->notifier()->notifyRenderCompleted(url, url);
+        } else {
+            m_rpcServer->notifier()->notifyRenderError(url, error);
+        }
+    });
+#endif
+
     projectManager()->init(Url, clipsToLoad);
     m_mainWindow->init();
 
@@ -885,6 +907,13 @@ MixerManager *Core::mixer()
 {
     return m_mixerWidget;
 }
+
+#ifdef ENABLE_RPC
+RpcServer *Core::rpcServer()
+{
+    return m_rpcServer;
+}
+#endif
 
 void Core::initLocale()
 {
@@ -1378,12 +1407,23 @@ void Core::profileChanged()
 
 void Core::pushUndo(const Fun &undo, const Fun &redo, const QString &text)
 {
-    undoStack()->push(new FunctionalUndoCommand(undo, redo, text));
+    auto stack = undoStack();
+    if (!stack) {
+        qWarning() << "Core::pushUndo called with no undo stack (project closed?)";
+        return;
+    }
+    stack->push(new FunctionalUndoCommand(undo, redo, text));
 }
 
 void Core::pushUndo(QUndoCommand *command)
 {
-    undoStack()->push(command);
+    auto stack = undoStack();
+    if (!stack) {
+        qWarning() << "Core::pushUndo called with no undo stack (project closed?)";
+        delete command; // Cleanup if we can't push
+        return;
+    }
+    stack->push(command);
 }
 
 int Core::undoIndex() const
@@ -1472,7 +1512,10 @@ std::shared_ptr<EffectStackModel> Core::getItemEffectStack(const QUuid &uuid, in
 
 std::shared_ptr<DocUndoStack> Core::undoStack()
 {
-    return projectManager()->undoStack();
+    if (!m_projectManager || !m_projectManager->current()) {
+        return nullptr;
+    }
+    return m_projectManager->undoStack();
 }
 
 QMap<int, QString> Core::getTrackNames(bool videoOnly)

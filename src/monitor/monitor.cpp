@@ -298,6 +298,13 @@ Monitor::Monitor(Kdenlive::MonitorId id, MonitorManager *manager, QWidget *paren
         connect(m_recManager, &RecManager::addClipToProject, this, &Monitor::addClipToProject);
         connect(m_glMonitor, &VideoWidget::startDrag, this, &Monitor::slotStartDrag);
         connect(pCore.get(), &Core::binClipDeleted, m_glMonitor->getControllerProxy(), &MonitorProxy::clipDeleted);
+        // Release producer before clip deletion to avoid dangling references
+        connect(pCore.get(), &Core::binClipAboutToBeDeleted, this, [this](const QString &clipId) {
+            if (m_controller && m_controller->clipId() == clipId) {
+                // This clip is being deleted - release our producer reference
+                m_glMonitor->setProducer(nullptr, isActive(), -1);
+            }
+        });
         // Show timeline clip usage
         connect(pCore.get(), &Core::clipInstanceResized, this, [this](const QString &binId) {
             if (m_controller && activeClipId() == binId) {
@@ -830,7 +837,11 @@ void Monitor::slotForceSize(QAction *a)
 
 void Monitor::buildBackgroundedProducer(int pos)
 {
-    if (m_controller == nullptr) {
+    if (m_controller == nullptr || pCore->closing) {
+        return;
+    }
+    auto *doc = pCore->currentDoc();
+    if (!doc || doc->closing) {
         return;
     }
     auto producer = m_controller->sequenceProducer(m_activeSequence);
@@ -1965,8 +1976,9 @@ void Monitor::updateClipProducer(const QString &playlist)
 bool Monitor::slotOpenClip(const std::shared_ptr<ProjectClip> &controller, int in, int out, const QUuid &sequenceUuid)
 {
     m_activeSequence = QUuid();
-    if (controller != nullptr && pCore->currentDoc() && pCore->currentDoc()->closing) {
-        // Don't display a clip if we are closing
+    auto *doc = pCore->currentDoc();
+    if (!doc || doc->closing) {
+        // Don't display a clip if we are closing or no document
         return false;
     }
     if (m_qmlManager->sceneType() == MonitorSceneAutoMask && maskMode() != MaskModeType::MaskNone) {
@@ -2040,7 +2052,8 @@ bool Monitor::slotOpenClip(const std::shared_ptr<ProjectClip> &controller, int i
         // m_audioChannels->menuAction()->setVisible(false);
         m_streamAction->setVisible(false);
         checkOverlay();
-        if (pCore->currentDoc()->closing) {
+        auto *currentDoc = pCore->currentDoc();
+        if (!currentDoc || currentDoc->closing) {
             return false;
         }
         if (monitorVisible()) {
@@ -2065,8 +2078,13 @@ bool Monitor::slotOpenClip(const std::shared_ptr<ProjectClip> &controller, int i
         }
         ClipType::ProducerType type = controller->clipType();
         if (type == ClipType::AV || type == ClipType::Video || type == ClipType::SlideShow) {
-            m_glMonitor->rootObject()->setProperty(
-                "baseThumbPath", QStringLiteral("image://thumbnail/%1/%2/#").arg(controller->clipId(), pCore->currentDoc()->uuid().toString()));
+            auto *currentDoc = pCore->currentDoc();
+            if (currentDoc) {
+                m_glMonitor->rootObject()->setProperty("baseThumbPath",
+                                                       QStringLiteral("image://thumbnail/%1/%2/#").arg(controller->clipId(), currentDoc->uuid().toString()));
+            } else {
+                m_glMonitor->rootObject()->setProperty("baseThumbPath", QString());
+            }
         } else {
             m_glMonitor->rootObject()->setProperty("baseThumbPath", QString());
         }
@@ -2621,6 +2639,13 @@ void Monitor::resetScene()
 
 void Monitor::buildSplitEffect(Mlt::Producer *original)
 {
+    if (!m_controller || pCore->closing) {
+        return;
+    }
+    auto *doc = pCore->currentDoc();
+    if (!doc || doc->closing) {
+        return;
+    }
     m_splitEffect.reset(new Mlt::Filter(pCore->getProjectProfile(), "frei0r.alphagrad"));
     if ((m_splitEffect != nullptr) && m_splitEffect->is_valid()) {
         m_splitEffect->set("0", 0.5);    // 0 is the Clip left parameter

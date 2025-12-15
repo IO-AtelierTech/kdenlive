@@ -203,6 +203,21 @@ public:
     /** @brief returns the ids of all the tracks */
     std::unordered_set<int> getAllTracksIds() const;
 
+    /** @brief Returns all clip IDs on a specific track
+        @param trackId The track to query */
+    std::vector<int> getTrackClipIds(int trackId) const;
+
+    /** @brief Returns all composition IDs in the timeline */
+    std::vector<int> getAllCompositionIds() const;
+
+    /** @brief Returns a composition's aTrack value
+        @param compositionId The composition to query */
+    int getCompositionATrack(int compositionId) const;
+
+    /** @brief Returns a composition's display name
+        @param compositionId The composition to query */
+    QString getCompositionName(int compositionId) const;
+
     /** @brief returns the track index (id) from its position */
     int getTrackIndexFromPosition(int pos) const;
 

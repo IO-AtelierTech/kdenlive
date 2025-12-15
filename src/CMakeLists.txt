@@ -58,6 +58,9 @@ add_subdirectory(profiles)
 add_subdirectory(project)
 add_subdirectory(pythoninterfaces)
 add_subdirectory(render)
+if(ENABLE_RPC)
+    add_subdirectory(rpc)
+endif()
 add_subdirectory(renderpresets)
 add_subdirectory(scopes)
 add_subdirectory(timeline2)
@@ -276,6 +279,7 @@ target_link_libraries(kdenliveLib PUBLIC
     Qt${QT_MAJOR_VERSION}::MultimediaWidgets
     Qt${QT_MAJOR_VERSION}::NetworkAuth
     Qt${QT_MAJOR_VERSION}::SvgWidgets
+    Qt${QT_MAJOR_VERSION}::WebSockets
     # Qt${QT_MAJOR_VERSION}::Test
 )
 
@@ -339,6 +343,11 @@ endif()
 if(NOT USE_DBUS)
     target_compile_definitions(kdenliveLib PRIVATE -DNODBUS)
     target_compile_definitions(kdenlive PRIVATE -DNODBUS)
+endif()
+
+if(ENABLE_RPC)
+    target_compile_definitions(kdenliveLib PUBLIC -DENABLE_RPC)
+    target_link_libraries(kdenliveLib PUBLIC Qt${QT_MAJOR_VERSION}::WebSockets)
 endif()
 
 if (BUILD_QCH)

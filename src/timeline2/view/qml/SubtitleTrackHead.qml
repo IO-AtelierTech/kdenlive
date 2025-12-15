@@ -22,7 +22,7 @@ Rectangle {
     }
 
     visible: height > 0
-    color: (controller && controller.isSubtitleTrack(timeline.activeTrack)) ? Qt.tint(getTrackColor(false, false), selectedTrackColor) : getTrackColor(false, false)
+    color: (controller && timeline && controller.isSubtitleTrack(timeline.activeTrack)) ? Qt.tint(getTrackColor(false, false), selectedTrackColor) : getTrackColor(false, false)
     MouseArea {
         anchors.fill: parent
         onClicked: {
@@ -47,8 +47,8 @@ Rectangle {
     }
     ComboBox {
         id: subLabel
-        model: timeline.subtitlesList
-        property int subIndex: timeline.activeSubPosition
+        model: timeline ? timeline.subtitlesList : []
+        property int subIndex: timeline ? timeline.activeSubPosition : -1
         onSubIndexChanged: {
             subLabel.currentIndex = subIndex
         }

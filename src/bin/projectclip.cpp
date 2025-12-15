@@ -213,7 +213,8 @@ std::shared_ptr<ProjectClip> ProjectClip::construct(const QString &id, const QDo
 
 ProjectClip::~ProjectClip()
 {
-    if (pCore->currentDoc()->closing) {
+    auto *doc = pCore->currentDoc();
+    if (doc && doc->closing) {
         for (auto &p : m_audioProducers) {
             m_effectStack->removeService(p.second);
         }
@@ -2411,10 +2412,24 @@ void ProjectClip::purgeReferences(const QUuid &activeUuid, bool deleteClip)
 
 bool ProjectClip::selfSoftDelete(Fun &undo, Fun &redo)
 {
+    // Notify monitor to release producer reference before deletion
+    Q_EMIT pCore->binClipAboutToBeDeleted(m_binId);
+
     Fun operation = [this]() {
         // Free audio thumb data and timeline producers
         pCore->taskManager.discardJobs(ObjectId(KdenliveObjectType::BinClip, m_binId.toInt(), QUuid()));
         m_disabledProducer.reset();
+        // Remove services from effect stack before clearing producer maps
+        // This releases shared_ptr references so m_masterProducer can be properly destroyed
+        for (auto &p : m_audioProducers) {
+            m_effectStack->removeService(p.second);
+        }
+        for (auto &p : m_videoProducers) {
+            m_effectStack->removeService(p.second);
+        }
+        for (auto &p : m_timewarpProducers) {
+            m_effectStack->removeService(p.second);
+        }
         m_audioProducers.clear();
         m_videoProducers.clear();
         removeSequenceWarpResources();

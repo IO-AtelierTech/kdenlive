@@ -78,6 +78,10 @@ ClipController::ClipController(const QString &clipId, const std::shared_ptr<Mlt:
 ClipController::~ClipController()
 {
     delete m_properties;
+    if (m_masterProducer.use_count() > 1) {
+        qWarning() << "ClipController::~ClipController() - m_masterProducer has" << m_masterProducer.use_count() << "references for clip" << m_controllerBinId
+                   << "- this will cause assertion failure in debug builds";
+    }
     Q_ASSERT(m_masterProducer.use_count() <= 1);
     m_masterProducer.reset();
 }

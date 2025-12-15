@@ -161,6 +161,9 @@ public:
     /** @brief Raise (show) the clip or project monitor */
     void raiseMonitor(bool clipMonitor);
 
+    /** @brief Returns a pointer to the render widget */
+    RenderWidget *renderWidget() const { return m_renderWidget; }
+
     /** @brief Raise (show) the project bin
      * @param unconditionally if false, we won't raise the bin if docked with the project monitor */
     void raiseBin(bool unconditionally = true);
@@ -676,6 +679,10 @@ Q_SIGNALS:
     void setPreviewProgress(int);
     void setRenderProgress(int);
     void displayMessage(const QString &, MessageType, int);
+    /** @brief Emitted when render job progress is updated */
+    void renderProgressChanged(const QString &url, int progress, int frame);
+    /** @brief Emitted when render job is finished */
+    void renderFinished(const QString &url, int status, const QString &error);
     void displaySelectionMessage(const QString &);
     void displayProgressMessage(const QString &, MessageType, int, bool canBeStopped = false);
     /** @brief Project profile changed, update render widget accordingly. */

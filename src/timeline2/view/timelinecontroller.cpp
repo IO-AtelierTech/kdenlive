@@ -156,7 +156,11 @@ void TimelineController::setModel(std::shared_ptr<TimelineItemModel> model)
 
 void TimelineController::loadSubtitleIndex()
 {
-    int currentIx = pCore->currentDoc()->getSequenceProperty(m_model->uuid(), QStringLiteral("kdenlive:activeSubtitleIndex"), QStringLiteral("0")).toInt();
+    auto *doc = pCore->currentDoc();
+    if (!doc) {
+        return;
+    }
+    int currentIx = doc->getSequenceProperty(m_model->uuid(), QStringLiteral("kdenlive:activeSubtitleIndex"), QStringLiteral("0")).toInt();
     auto subtitleModel = m_model->getSubtitleModel();
     QMap<std::pair<int, QString>, QString> currentSubs = subtitleModel->getSubtitlesList();
     QMapIterator<std::pair<int, QString>, QString> i(currentSubs);
@@ -2738,7 +2742,11 @@ int TimelineController::workingPreview() const
 
 bool TimelineController::useRuler() const
 {
-    return pCore->currentDoc()->getDocumentProperty(QStringLiteral("enableTimelineZone")).toInt() == 1;
+    auto *doc = pCore->currentDoc();
+    if (!doc) {
+        return false;
+    }
+    return doc->getDocumentProperty(QStringLiteral("enableTimelineZone")).toInt() == 1;
 }
 
 void TimelineController::resetPreview()
@@ -2947,8 +2955,12 @@ void TimelineController::changeItemSpeed(int clipId, double speed)
 
 void TimelineController::switchCompositing(bool enable)
 {
+    auto *doc = pCore->currentDoc();
+    if (!doc) {
+        return;
+    }
     // m_model->m_tractor->lock();
-    pCore->currentDoc()->setSequenceProperty(m_model->uuid(), QStringLiteral("compositing"), QString::number(enable));
+    doc->setSequenceProperty(m_model->uuid(), QStringLiteral("compositing"), QString::number(enable));
     QScopedPointer<Mlt::Service> service(m_model->m_tractor->field());
     QScopedPointer<Mlt::Field> field(m_model->m_tractor->field());
     field->lock();
@@ -5524,6 +5536,10 @@ void TimelineController::setActiveSubLayer(int layer)
 
 void TimelineController::subtitlesMenuActivated(int ix)
 {
+    auto *doc = pCore->currentDoc();
+    if (!doc) {
+        return;
+    }
     auto subtitleModel = m_model->getSubtitleModel();
     QMap<std::pair<int, QString>, QString> currentSubs = subtitleModel->getSubtitlesList();
     if (subtitleModel) {
@@ -5547,8 +5563,7 @@ void TimelineController::subtitlesMenuActivated(int ix)
                     // Match, switch to another subtitle
                     int index = i.key().first;
                     m_activeSubPosition = counter;
-                    int currentIx =
-                        pCore->currentDoc()->getSequenceProperty(m_model->uuid(), QStringLiteral("kdenlive:activeSubtitleIndex"), QStringLiteral("0")).toInt();
+                    int currentIx = doc->getSequenceProperty(m_model->uuid(), QStringLiteral("kdenlive:activeSubtitleIndex"), QStringLiteral("0")).toInt();
                     if (index != currentIx) subtitleModel->activateSubtitle(index);
                     break;
                 }
@@ -5558,7 +5573,7 @@ void TimelineController::subtitlesMenuActivated(int ix)
             return;
         }
     }
-    int currentIx = pCore->currentDoc()->getSequenceProperty(m_model->uuid(), QStringLiteral("kdenlive:activeSubtitleIndex"), QStringLiteral("0")).toInt();
+    int currentIx = doc->getSequenceProperty(m_model->uuid(), QStringLiteral("kdenlive:activeSubtitleIndex"), QStringLiteral("0")).toInt();
     if (ix > -1) {
         m_activeSubPosition = currentSubs.size();
         Q_EMIT activeSubtitlePositionChanged();
@@ -5582,7 +5597,11 @@ void TimelineController::subtitlesMenuActivated(int ix)
 
 const QString TimelineController::getActionShortcut(const QString actionName)
 {
-    QAction *a = pCore->currentDoc()->getAction(actionName);
+    auto *doc = pCore->currentDoc();
+    if (!doc) {
+        return QString();
+    }
+    QAction *a = doc->getAction(actionName);
     QString shortcut;
     if (a) {
         shortcut = a->shortcut().toString(QKeySequence::NativeText);
@@ -5681,7 +5700,11 @@ void TimelineController::enableBuildInTransform()
 
 void TimelineController::showSubtitleManager(int page)
 {
-    int currentIx = pCore->currentDoc()->getSequenceProperty(m_model->uuid(), QStringLiteral("kdenlive:activeSubtitleIndex"), QStringLiteral("0")).toInt();
+    auto *doc = pCore->currentDoc();
+    if (!doc) {
+        return;
+    }
+    int currentIx = doc->getSequenceProperty(m_model->uuid(), QStringLiteral("kdenlive:activeSubtitleIndex"), QStringLiteral("0")).toInt();
     ManageSubtitles *d = new ManageSubtitles(m_model->getSubtitleModel(), this, currentIx, qApp->activeWindow());
     d->tabWidget->setCurrentIndex(page);
     d->exec();

@@ -13,8 +13,8 @@ Rectangle {
     id: rzone
     property int frameIn: 0
     property int frameOut: 0
-    x:  frameIn * timeline.scaleFactor
-    width: (frameOut - frameIn) * timeline.scaleFactor
+    x:  timeline ? frameIn * timeline.scaleFactor : 0
+    width: timeline ? (frameOut - frameIn) * timeline.scaleFactor : 0
     visible: frameOut > frameIn
     Rectangle {
         anchors.left: parent.left
@@ -106,7 +106,7 @@ Rectangle {
             id: inLabel
             anchors.fill: parent
             horizontalAlignment: Text.AlignHCenter
-            text: timeline.timecode(frameIn)
+            text: timeline ? timeline.timecode(frameIn) : ""
             font: miniFont
             color: activePalette.highlightedText
         }
@@ -122,7 +122,7 @@ Rectangle {
             id: outLabel
             anchors.fill: parent
             horizontalAlignment: Text.AlignHCenter
-            text: timeline.timecode(frameOut)
+            text: timeline ? timeline.timecode(frameOut) : ""
             font: miniFont
             color: activePalette.highlightedText
         }
@@ -139,7 +139,7 @@ Rectangle {
             id: durationLabel
             anchors.fill: parent
             horizontalAlignment: Text.AlignHCenter
-            text: timeline.timecode(frameOut - frameIn)
+            text: timeline ? timeline.timecode(frameOut - frameIn) : ""
             font: miniFont
             color: activePalette.highlightedText
         }

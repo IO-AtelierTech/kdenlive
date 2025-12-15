@@ -1596,7 +1596,7 @@ Rectangle {
             property int lastDuration: -1
             property int startMousePos
             property bool dragStarted: false
-            property string fadeString: timeline.simplifiedTC(clipRoot.fadeOut)
+            property string fadeString: timeline ? timeline.simplifiedTC(clipRoot.fadeOut) : ""
             drag.smoothed: false
             onClicked: {
                 if (clipRoot.fadeOut == 0) {
@@ -1704,7 +1704,7 @@ Rectangle {
             property int startFadeIn
             property int startMousePos
             property bool dragStarted: false
-            property string fadeString: timeline.simplifiedTC(clipRoot.fadeIn)
+            property string fadeString: timeline ? timeline.simplifiedTC(clipRoot.fadeIn) : ""
             visible: container.handleVisible && mouseArea.containsMouse && !dragProxyArea.pressed
             onClicked: {
                 if (clipRoot.fadeIn == 0) {
@@ -1807,7 +1807,7 @@ Rectangle {
         }
         Item {
             id: slipControler
-            property color color: timeline.trimmingMainClip === clipId ? root.selectionColor : activePalette.highlight
+            property color color: (timeline && timeline.trimmingMainClip === clipId) ? root.selectionColor : activePalette.highlight
             anchors.bottom: container.bottom
             height: container.height
             width: clipRoot.maxDuration * clipRoot.timeScale

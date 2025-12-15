@@ -14,23 +14,23 @@ import org.kde.kdenlive as K
 Item {
     id: rulerRoot
     // The standard width for labels. Depends on format used (frame number or full timecode)
-    property int labelSize: fontMetrics.boundingRect(timeline.timecode(36000)).width
+    property int labelSize: fontMetrics.boundingRect(timeline ? timeline.timecode(36000) : "00:00:00:00").width
     // The spacing between labels. Depends on labelSize
     property real labelSpacing: labelSize
     // The space we want between each ticks in the ruler
-    property real tickSpacing: timeline.scaleFactor
+    property real tickSpacing: timeline ? timeline.scaleFactor : 1.0
     property alias rulerZone : zone
-    property int workingPreview : timeline.workingPreview
-    property int timecodeOffset : timeline.timecodeOffset
+    property int workingPreview : timeline ? timeline.workingPreview : -1
+    property int timecodeOffset : timeline ? timeline.timecodeOffset : 0
     property int labelMod: 1
-    property bool useTimelineRuler : timeline.useRuler
+    property bool useTimelineRuler : timeline ? timeline.useRuler : true
     property int zoneHeight: Math.ceil(root.baseUnit / 2) + 1
     property bool showZoneLabels: false
     property bool resizeActive: false // Used to decide which mouse cursor we should display
     property bool hoverGuide: false
     property bool hoverResizeHandle: false
     property int cursorShape: resizeActive ? Qt.SizeHorCursor : hoverResizeHandle ? Qt.SizeHorCursor : hoverGuide ? Qt.PointingHandCursor : Qt.ArrowCursor
-    property var effectZones: timeline.masterEffectZones
+    property var effectZones: timeline ? timeline.masterEffectZones : []
     property int guideLabelHeight: K.KdenliveSettings.showmarkers ? fontMetrics.height : 0
     property int previewHeight: Math.ceil(timecodeContainer.height / 5)
     property color dimmedColor: (activePalette.text.r + activePalette.text.g + activePalette.text.b > 1.5) ? Qt.darker(activePalette.text, 1.3) : Qt.lighter(activePalette.text, 1.3)
@@ -65,36 +65,38 @@ Item {
 
     // Timeline preview stuff
     Repeater {
-        model: timeline.dirtyChunks
+        model: timeline ? timeline.dirtyChunks : []
         anchors.fill: parent
         delegate: Rectangle {
-            x: modelData * timeline.scaleFactor
+            property real scaleFactor: timeline ? timeline.scaleFactor : 1.0
+            x: modelData * scaleFactor
             anchors.bottom: parent.bottom
             anchors.bottomMargin: zoneHeight
-            width: 25 * timeline.scaleFactor
+            width: 25 * scaleFactor
             height: previewHeight
             color: 'darkred'
         }
     }
 
     Repeater {
-        model: timeline.renderedChunks
+        model: timeline ? timeline.renderedChunks : []
         anchors.fill: parent
         delegate: Rectangle {
-            x: modelData * timeline.scaleFactor
+            property real scaleFactor: timeline ? timeline.scaleFactor : 1.0
+            x: modelData * scaleFactor
             anchors.bottom: parent.bottom
             anchors.bottomMargin: zoneHeight
-            width: 25 * timeline.scaleFactor
+            width: 25 * scaleFactor
             height: previewHeight
             color: 'darkgreen'
         }
     }
     Rectangle {
         id: working
-        x: rulerRoot.workingPreview * timeline.scaleFactor
+        x: timeline ? rulerRoot.workingPreview * timeline.scaleFactor : 0
         anchors.bottom: parent.bottom
         anchors.bottomMargin: zoneHeight
-        width: 25 * timeline.scaleFactor
+        width: timeline ? 25 * timeline.scaleFactor : 25
         height: previewHeight
         color: 'orange'
         visible: rulerRoot.workingPreview > -1
@@ -109,7 +111,7 @@ Item {
         Item {
             id: guideRoot
             anchors.fill: parent
-            property bool activated : proxy.position === model.frame
+            property bool activated : proxy ? proxy.position === model.frame : false
             property bool isRangeMarker: model.hasRange
             property real markerDuration: model.duration
             property real markerEndPos: model.endPos
@@ -542,8 +544,9 @@ Item {
         model: Math.ceil(rulercontainer.width / rulerRoot.tickSpacing) + 2
         property int offset: Math.floor(scrollView.contentX /rulerRoot.tickSpacing)
         Item {
-            property int realPos: (tickRepeater.offset + index) * rulerRoot.tickSpacing / timeline.scaleFactor
-            x: Math.round(realPos * timeline.scaleFactor)
+            property real scaleFactor: timeline ? timeline.scaleFactor : 1.0
+            property int realPos: (tickRepeater.offset + index) * rulerRoot.tickSpacing / scaleFactor
+            x: Math.round(realPos * scaleFactor)
             height: parent.height
             property bool showText: (tickRepeater.offset + index)%rulerRoot.labelMod == 0
             Rectangle {
@@ -555,7 +558,7 @@ Item {
             Label {
                 visible: parent.showText
                 anchors.top: parent.top
-                text: timeline.timecode(parent.realPos + rulerRoot.timecodeOffset)
+                text: timeline ? timeline.timecode(parent.realPos + rulerRoot.timecodeOffset) : ""
                 font: miniFont
                 color: rulerRoot.dimmedColor
             }
@@ -610,12 +613,12 @@ Item {
         Binding {
             target: zone
             property: "frameIn"
-            value: timeline.zoneIn
+            value: timeline ? timeline.zoneIn : 0
         }
         Binding {
             target: zone
             property: "frameOut"
-            value: timeline.zoneOut
+            value: timeline ? timeline.zoneOut : 0
         }
         color: useTimelineRuler ? Qt.rgba(activePalette.highlight.r,activePalette.highlight.g,activePalette.highlight.b,0.9) :
         Qt.rgba(activePalette.highlight.r,activePalette.highlight.g,activePalette.highlight.b,0.5)
@@ -631,9 +634,10 @@ Item {
     Repeater {
         model: effectZones
         Rectangle {
-            x: effectZones[index].x * timeline.scaleFactor
+            property real scaleFactor: timeline ? timeline.scaleFactor : 1.0
+            x: effectZones[index].x * scaleFactor
             height: zoneHeight - 1
-            width: (effectZones[index].y - effectZones[index].x) * timeline.scaleFactor
+            width: (effectZones[index].y - effectZones[index].x) * scaleFactor
             color: "blueviolet"
             anchors.bottom: parent.bottom
             opacity: 0.4
@@ -646,12 +650,12 @@ Item {
         Binding {
             target: effectZone
             property: "frameIn"
-            value: timeline.effectZone.x
+            value: timeline ? timeline.effectZone.x : 0
         }
         Binding {
             target: effectZone
             property: "frameOut"
-            value: timeline.effectZone.y
+            value: timeline ? timeline.effectZone.y : 0
         }
         color: "orchid"
         anchors.bottom: parent.bottom
