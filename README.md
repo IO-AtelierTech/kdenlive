@@ -46,7 +46,7 @@ asyncio.run(main())
 
 - **API Reference**: [`dev-docs/rpc/api.md`](dev-docs/rpc/api.md)
 - **Schema (Source of Truth)**: [`src/rpc/rpc-schema.json5`](src/rpc/rpc-schema.json5)
-- **Implementation Status**: [`TODO.md`](TODO.md)
+- **Implementation Status**: [`dev-docs/TODO.md`](dev-docs/TODO.md)
 
 ### Configuration
 

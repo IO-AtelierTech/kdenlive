@@ -79,13 +79,13 @@ The MCP integration (Python client) tests the API from an end-user perspective.
 
 ### Current Status
 - 54/72 tools working (75%)
-- See `TODO.md` for known issues
+- See `dev-docs/TODO.md` for known issues
 
 ### Testing Workflow
 1. Build and run Kdenlive: `just run`
 2. Run MCP session in separate terminal
 3. Test problematic workflows
-4. If crash: follow `dev-docs/debugging-workflow.md`
+4. If crash: follow `dev-docs/rpc/debugging.md`
 
 ---
 
@@ -113,9 +113,9 @@ Before tagging a release:
 - [ ] All Python E2E tests pass
 - [ ] clang-format clean
 - [ ] No compiler warnings in RPC code
-- [ ] API documentation up to date (`dev-docs/rpc-api.md`)
+- [ ] API documentation up to date (`dev-docs/rpc/api.md`)
 - [ ] Schema reflects implementation (`src/rpc/rpc-schema.json5`)
-- [ ] TODO.md reflects current status
+- [ ] `dev-docs/TODO.md` reflects current status
 - [ ] CI builds successfully (Linux and Windows)
 
 ---
