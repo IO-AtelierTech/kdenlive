@@ -7,6 +7,10 @@
 
 > **This is a fork of Kdenlive** that adds a JSON-RPC 2.0 WebSocket API for automation. The goal is to enable AI-powered and script-based video editing workflows via an MCP (Model Context Protocol) server.
 
+### MCP in Action
+
+![MCP controlling Kdenlive via WebSocket RPC](gif/screencast_30s_hq.gif)
+
 ## WebSocket RPC API
 
 This fork exposes **86 methods** across 9 handlers for programmatic control of Kdenlive:
@@ -44,9 +48,10 @@ asyncio.run(main())
 
 ### Documentation
 
-- **API Reference**: [`dev-docs/rpc-api.md`](dev-docs/rpc-api.md)
+- **API Reference**: [`dev-docs/rpc/api.md`](dev-docs/rpc/api.md)
 - **Schema (Source of Truth)**: [`src/rpc/rpc-schema.json5`](src/rpc/rpc-schema.json5)
 - **Implementation Status**: [`TODO.md`](TODO.md)
+- **Python Client & MCP Server**: [`IO-AtelierTech/kdenlive-automation`](https://github.com/IO-AtelierTech/kdenlive-automation)
 
 ### Configuration
 
