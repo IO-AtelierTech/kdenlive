@@ -2,7 +2,7 @@
 
 External automation interface for Kdenlive using JSON-RPC 2.0 over WebSocket.
 
-> **Note:** The canonical API specification is defined in [`src/rpc/rpc-schema.json5`](../src/rpc/rpc-schema.json5). This document provides human-readable documentation with examples.
+> **Note:** The canonical API specification is defined in [`src/rpc/rpc-schema.json5`](../../src/rpc/rpc-schema.json5). This document provides human-readable documentation with examples.
 
 ## Table of Contents
 

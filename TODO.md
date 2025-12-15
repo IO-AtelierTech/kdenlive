@@ -137,7 +137,9 @@ python tests/rpc/validate_schema.py
 
 | Document | Purpose |
 |----------|---------|
-| `dev-docs/rpc-api.md` | Full API reference with examples |
+| `dev-docs/rpc/api.md` | Full API reference with examples |
+| `dev-docs/rpc/debugging.md` | Debugging workflow |
+| `dev-docs/rpc/qa-strategy.md` | QA checklist |
 | `src/rpc/rpc-schema.json5` | **Source of truth** - schema definition |
 | `README.md` | Quick start and overview |
 
