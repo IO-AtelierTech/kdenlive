@@ -33,6 +33,3 @@ docker/build-output/
 
 # Git worktrees (for parallel development)
 .worktrees/
-
-# Octopus parallel development
-.octopus/
