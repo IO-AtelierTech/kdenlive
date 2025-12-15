@@ -203,18 +203,18 @@ tentacle-spawn id:
     # Extract tasks
     tasks=$(awk '/^### {{id}}:/,/^---$/' .octopus/master-todo.md | awk '/^\*\*Tasks:\*\*/,/^\*\*|^---/' | grep -E '^[0-9]+\.' | sed 's/^/- [ ] /')
     # Create TODO.md in worktree
-    cat > "$worktree_path/TODO.md" << EOF
-# Tentacle: {{id}}
-## $desc
-
-**Scope:** $scope
-
-## Tasks
-$tasks
-
----
-*Auto-generated from .octopus/master-todo.md*
-EOF
+    {
+        echo "# Tentacle: {{id}}"
+        echo "## $desc"
+        echo ""
+        echo "**Scope:** $scope"
+        echo ""
+        echo "## Tasks"
+        echo "$tasks"
+        echo ""
+        echo "---"
+        echo "*Auto-generated from .octopus/master-todo.md*"
+    } > "$worktree_path/TODO.md"
     # Create marker file
     touch "$worktree_path/.octopus-tentacle"
     echo ""
