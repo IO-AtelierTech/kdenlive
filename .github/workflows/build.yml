@@ -213,6 +213,18 @@ jobs:
           & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --set srcDir="$env:GITHUB_WORKSPACE" kde/kdemultimedia/kdenlive
 
       # -----------------------------------------------------------------------
+      # Disable AT-SPI accessibility bridge in Qt (Linux only)
+      # -----------------------------------------------------------------------
+      # qtbase's dynamic option withAccessibility (default True) emits
+      # -DQT_FEATURE_accessibility_atspi_bridge=ON which fails pkg-config
+      # resolution inside the Craft prefix (PkgConfig::ATSPI2 invalid target).
+      # Override it before installing dependencies.
+      - name: Disable AT-SPI bridge in qtbase
+        if: matrix.target == 'linux-64-gcc'
+        run: |
+          & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --set "libs/qt6/qtbase.withAccessibility=False" kde/kdemultimedia/kdenlive
+
+      # -----------------------------------------------------------------------
       # Prepare build environment
       # -----------------------------------------------------------------------
       - name: Prepare build environment
