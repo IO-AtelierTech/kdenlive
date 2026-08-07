@@ -223,9 +223,22 @@ jobs:
         if: matrix.target == 'linux-64-gcc'
         shell: bash
         run: |
-          mkdir -p "$HOME/craft/CraftMaster/linux-64-gcc/etc"
-          printf '[libs/qt6/qtbase]\nwithAccessibility = False\n' >> "$HOME/craft/CraftMaster/linux-64-gcc/etc/BlueprintSettings.ini"
-          cat "$HOME/craft/CraftMaster/linux-64-gcc/etc/BlueprintSettings.ini"
+          f="$HOME/craft/CraftMaster/linux-64-gcc/etc/BlueprintSettings.ini"
+          mkdir -p "$(dirname "$f")"
+          if [ -f "$f" ] && grep -q '^\[libs/qt6/qtbase\]' "$f"; then
+            # Section already exists (craft persists registered options): set the key inside it
+            awk -v v='withAccessibility = False' '
+              BEGIN { ins = 0; replaced = 0 }
+              /^\[/ { if (ins && !replaced) print v; ins = 0 }
+              /^\[libs\/qt6\/qtbase\]/ { ins = 1 }
+              ins && /^withAccessibility\s*=/ { print v; replaced = 1; next }
+              { print }
+              END { if (ins && !replaced) print v }
+            ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+          else
+            printf '[libs/qt6/qtbase]\nwithAccessibility = False\n' >> "$f"
+          fi
+          grep -A3 '^\[libs/qt6/qtbase\]' "$f"
 
       # -----------------------------------------------------------------------
       # Prepare build environment
