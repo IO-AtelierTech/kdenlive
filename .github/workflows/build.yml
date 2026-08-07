@@ -51,6 +51,8 @@ jobs:
     env:
       CRAFT_TARGET: ${{ matrix.target }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Let Qt's pkg-config find the runner's system xkbcommon (xkbcommon-x11.pc)
+      PKG_CONFIG_PATH: ${{ matrix.target == 'linux-64-gcc' && '/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig' || '' }}
 
     steps:
       # -----------------------------------------------------------------------
