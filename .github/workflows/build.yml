@@ -218,11 +218,14 @@ jobs:
       # qtbase's dynamic option withAccessibility (default True) emits
       # -DQT_FEATURE_accessibility_atspi_bridge=ON which fails pkg-config
       # resolution inside the Craft prefix (PkgConfig::ATSPI2 invalid target).
-      # Override it before installing dependencies.
+      # Pre-create BlueprintSettings.ini so Craft loads the override.
       - name: Disable AT-SPI bridge in qtbase
         if: matrix.target == 'linux-64-gcc'
+        shell: bash
         run: |
-          & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --set "libs/qt6/qtbase.withAccessibility=False" kde/kdemultimedia/kdenlive
+          mkdir -p "$HOME/craft/CraftMaster/linux-64-gcc/etc"
+          printf '[libs/qt6/qtbase]\nwithAccessibility = False\n' >> "$HOME/craft/CraftMaster/linux-64-gcc/etc/BlueprintSettings.ini"
+          cat "$HOME/craft/CraftMaster/linux-64-gcc/etc/BlueprintSettings.ini"
 
       # -----------------------------------------------------------------------
       # Prepare build environment
