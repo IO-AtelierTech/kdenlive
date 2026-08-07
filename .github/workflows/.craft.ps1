@@ -18,6 +18,10 @@ if ($IsLinux) {
     Remove-Item Env:ANDROID_NDK_ROOT -ErrorAction SilentlyContinue
     Remove-Item Env:ANDROID_SDK_ROOT -ErrorAction SilentlyContinue
     Remove-Item Env:ANDROID_HOME -ErrorAction SilentlyContinue
+
+    # setup-python clobbers PKG_CONFIG_PATH; restore system pkg-config dirs
+    # so Qt can find xkbcommon-x11 (required by the xcb feature)
+    $env:PKG_CONFIG_PATH = "/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:${env:PKG_CONFIG_PATH}"
 }
 
 # Determine Python executable
