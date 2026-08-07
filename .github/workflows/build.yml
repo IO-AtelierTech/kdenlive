@@ -162,6 +162,7 @@ jobs:
             libgbm-dev \
             libpulse-dev \
             libasound2-dev \
+            libcrypt1 \
             libcups2-dev \
             libdbus-1-dev \
             libatspi2.0-dev \
@@ -245,6 +246,7 @@ jobs:
           }
           set_opt libs/qt6/qtbase withAccessibility False
           set_opt libs/qt6/qttools args "-DQT_FEATURE_assistant=OFF"
+          set_opt libs/pulseaudio args "-Dman=false"
           grep -A3 '^\[libs/qt6/' "$f"
 
       # -----------------------------------------------------------------------
