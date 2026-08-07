@@ -213,32 +213,39 @@ jobs:
           & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --set srcDir="$env:GITHUB_WORKSPACE" kde/kdemultimedia/kdenlive
 
       # -----------------------------------------------------------------------
-      # Disable AT-SPI accessibility bridge in Qt (Linux only)
+      # Craft blueprint option overrides (Linux only)
       # -----------------------------------------------------------------------
-      # qtbase's dynamic option withAccessibility (default True) emits
-      # -DQT_FEATURE_accessibility_atspi_bridge=ON which fails pkg-config
-      # resolution inside the Craft prefix (PkgConfig::ATSPI2 invalid target).
-      # Pre-create BlueprintSettings.ini so Craft loads the override.
-      - name: Disable AT-SPI bridge in qtbase
+      # 1) qtbase: withAccessibility (default True) emits
+      #    -DQT_FEATURE_accessibility_atspi_bridge=ON which fails pkg-config
+      #    resolution inside the Craft prefix (PkgConfig::ATSPI2 invalid target).
+      # 2) qttools: Qt Assistant needs the qlitehtml submodule which Craft does
+      #    not fetch; disabling QT_FEATURE_assistant skips that subtree.
+      # Pre-create/merge BlueprintSettings.ini so Craft loads the overrides.
+      - name: Override qtbase/qttools blueprint options
         if: matrix.target == 'linux-64-gcc'
         shell: bash
         run: |
           f="$HOME/craft/CraftMaster/linux-64-gcc/etc/BlueprintSettings.ini"
           mkdir -p "$(dirname "$f")"
-          if [ -f "$f" ] && grep -q '^\[libs/qt6/qtbase\]' "$f"; then
-            # Section already exists (craft persists registered options): set the key inside it
-            awk -v v='withAccessibility = False' '
-              BEGIN { ins = 0; replaced = 0 }
-              /^\[/ { if (ins && !replaced) print v; ins = 0 }
-              /^\[libs\/qt6\/qtbase\]/ { ins = 1 }
-              ins && /^withAccessibility\s*=/ { print v; replaced = 1; next }
-              { print }
-              END { if (ins && !replaced) print v }
-            ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-          else
-            printf '[libs/qt6/qtbase]\nwithAccessibility = False\n' >> "$f"
-          fi
-          grep -A3 '^\[libs/qt6/qtbase\]' "$f"
+          set_opt() {
+            section="$1"; key="$2"; value="$3"
+            if [ -f "$f" ] && grep -q "^\[${section}\]" "$f"; then
+              # Section exists (craft persists registered options): set/update the key inside it
+              awk -v sec="$section" -v k="$key" -v v="$value" '
+                BEGIN { ins = 0; done = 0 }
+                /^\[/ { if (ins && !done) { print k " = " v; done = 1 } ins = 0 }
+                $0 ~ "^\\[" sec "\\]$" { ins = 1 }
+                ins && $0 ~ "^" k "[[:space:]]*=" { print k " = " v; done = 1; next }
+                { print }
+                END { if (ins && !done) print k " = " v }
+              ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+            else
+              printf '[%s]\n%s = %s\n' "$section" "$key" "$value" >> "$f"
+            fi
+          }
+          set_opt libs/qt6/qtbase withAccessibility False
+          set_opt libs/qt6/qttools args "-DQT_FEATURE_assistant=OFF"
+          grep -A3 '^\[libs/qt6/' "$f"
 
       # -----------------------------------------------------------------------
       # Prepare build environment
