@@ -163,7 +163,7 @@ Window {
                 anchors.fill: parent
                 anchors.margins: 5
                 anchors.bottomMargin: 10
-                source: "qrc:/pics/splash-background.png"
+                source: "qrc:/pics/splash-background.webp"
                 verticalAlignment: Image.AlignTop
                 fillMode: Image.PreserveAspectCrop
 

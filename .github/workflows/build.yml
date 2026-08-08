@@ -249,6 +249,9 @@ jobs:
             fi
           }
           set_opt libs/pulseaudio args "-Dman=false"
+          # bigsh0t: bitbucket.org blocks wget's TLS fingerprint (404), so fetch
+          # the same tarball (SHA256 verified) from a GitHub release mirror.
+          set_opt libs/frei0r-bigsh0t url "https://github.com/Rusbelito/kdenlive/releases/download/bigsh0t-2.6-mirror/bigsh0t-2.6.tar.bz2"
           grep -A3 '^\[libs/' "$f"
 
       # -----------------------------------------------------------------------
