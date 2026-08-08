@@ -114,7 +114,7 @@ inline QJsonObject makeNotification(const QString &method, const QJsonObject &pa
 /**
  * @brief RPC protocol version
  */
-constexpr const char *RPC_VERSION = "1.0";
+constexpr const char *RPC_PROTOCOL_VERSION = "1.0";
 
 /**
  * @brief Default WebSocket server port
