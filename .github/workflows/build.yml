@@ -62,7 +62,7 @@ jobs:
       # Checkout
       # -----------------------------------------------------------------------
       - name: Check out source code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0          # Full history for version detection
 
@@ -70,7 +70,7 @@ jobs:
       # Setup Python
       # -----------------------------------------------------------------------
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -78,7 +78,7 @@ jobs:
       # Restore Craft cache
       # -----------------------------------------------------------------------
       - name: Restore Craft cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/cache
           key: craft-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('.craft.ini') }}
@@ -310,7 +310,7 @@ jobs:
       # Upload artifacts
       # -----------------------------------------------------------------------
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kdenlive-websocket-${{ matrix.name }}
           path: ${{ github.workspace }}/binaries/*
@@ -333,13 +333,13 @@ jobs:
       # Download all build artifacts
       # -----------------------------------------------------------------------
       - name: Download Windows artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: kdenlive-websocket-windows-x86_64
           path: release/windows
 
       - name: Download Linux artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: kdenlive-websocket-linux-x86_64
           path: release/linux
@@ -370,7 +370,7 @@ jobs:
       # Create GitHub Release
       # -----------------------------------------------------------------------
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: Kdenlive WebSocket ${{ env.VERSION }}
           body: |
