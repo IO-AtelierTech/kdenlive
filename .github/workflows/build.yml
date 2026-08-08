@@ -38,7 +38,10 @@ jobs:
         include:
           - name: windows-x86_64
             target: windows-cl-msvc2022-x86_64
-            os: windows-latest
+            # windows-latest is now windows-2025-vs2026 (VS 18.x) which Craft
+            # cannot detect (it only searches VS 16-18 in [17,18) range);
+            # pin to windows-2022 so VS 2022 (v143) is found.
+            os: windows-2022
 
           - name: linux-x86_64
             target: linux-64-gcc
@@ -216,13 +219,13 @@ jobs:
       # -----------------------------------------------------------------------
       # Craft blueprint option overrides (Linux only)
       # -----------------------------------------------------------------------
-      # 1) qtbase: withAccessibility (default True) emits
-      #    -DQT_FEATURE_accessibility_atspi_bridge=ON which fails pkg-config
-      #    resolution inside the Craft prefix (PkgConfig::ATSPI2 invalid target).
-      # 2) qttools: Qt Assistant needs the qlitehtml submodule which Craft does
-      #    not fetch; disabling QT_FEATURE_assistant skips that subtree.
-      # Pre-create/merge BlueprintSettings.ini so Craft loads the overrides.
-      - name: Override qtbase/qttools blueprint options
+      # pulseaudio is not in KDE's binary cache, so it always builds from source;
+      # the blueprint's default (man pages) breaks the build, so disable them.
+      # NOTE: qtbase/qttools must NOT be overridden: Craft compares the package
+      # config against KDE's cache manifest and falls back to source builds on
+      # any mismatch (withAccessibility/args), which produced ABI-inconsistent
+      # Qt trees (source qtbase without accessibility vs cached qtdeclarative).
+      - name: Override blueprint options
         if: matrix.target == 'linux-64-gcc'
         shell: bash
         run: |
@@ -244,10 +247,8 @@ jobs:
               printf '[%s]\n%s = %s\n' "$section" "$key" "$value" >> "$f"
             fi
           }
-          set_opt libs/qt6/qtbase withAccessibility False
-          set_opt libs/qt6/qttools args "-DQT_FEATURE_assistant=OFF"
           set_opt libs/pulseaudio args "-Dman=false"
-          grep -A3 '^\[libs/qt6/' "$f"
+          grep -A3 '^\[libs/' "$f"
 
       # -----------------------------------------------------------------------
       # Prepare build environment
