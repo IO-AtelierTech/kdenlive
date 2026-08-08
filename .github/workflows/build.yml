@@ -297,14 +297,29 @@ jobs:
         continue-on-error: true   # Don't fail build on test failures (for now)
 
       # -----------------------------------------------------------------------
+      # Pre-seed system libs for linuxdeploy (Linux only)
+      # -----------------------------------------------------------------------
+      # linuxdeploy 1-alpha-20250213 fails to resolve libcrypt.so.2 (NEEDED by
+      # libcupsimage.so.2) from the host, even though libcrypt1 is installed.
+      # Pre-seed it into the staged image so it lands in the appdir's usr/lib
+      # and linuxdeploy finds it there. (Do NOT set LD_LIBRARY_PATH to the
+      # system dir: it shadows hostedtoolcache's libpython and crashes craft.)
+      - name: Pre-seed libcrypt for linuxdeploy
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          img=$(ls -d "$HOME/craft/CraftMaster/linux-64-gcc/build/kde/kdemultimedia/kdenlive/image-RelWithDebInfo-"* | head -1)
+          [ -n "$img" ] || { echo "ERROR: kdenlive image dir not found"; exit 1; }
+          cp -L /usr/lib/x86_64-linux-gnu/libcrypt.so.2 "$img/usr/lib/libcrypt.so.2" 2>/dev/null || true
+          mkdir -p "$img/home/runner/craft/CraftMaster/linux-64-gcc/usr/lib"
+          cp -L /usr/lib/x86_64-linux-gnu/libcrypt.so.2 "$img/home/runner/craft/CraftMaster/linux-64-gcc/usr/lib/libcrypt.so.2"
+          echo "Pre-seeded libcrypt.so.2 into $img"
+
+      # -----------------------------------------------------------------------
       # Package
       # -----------------------------------------------------------------------
       - name: Create package
-        # linuxdeploy 1-alpha-20250213 cannot resolve libcrypt.so.2 (needed by
-        # libcupsimage.so.2) from the standard system dirs; make it discoverable.
-        # No-op on Windows.
-        env:
-          LD_LIBRARY_PATH: /usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
         run: |
           & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --package kde/kdemultimedia/kdenlive
 
