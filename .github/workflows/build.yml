@@ -179,6 +179,7 @@ jobs:
             libsqlite3-dev \
             libpcre2-dev \
             libglib2.0-dev \
+            libsysprof-capture-4-dev \
             libx11-dev \
             libx11-xcb-dev \
             libxext-dev \
