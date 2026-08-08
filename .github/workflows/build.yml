@@ -300,6 +300,11 @@ jobs:
       # Package
       # -----------------------------------------------------------------------
       - name: Create package
+        # linuxdeploy 1-alpha-20250213 cannot resolve libcrypt.so.2 (needed by
+        # libcupsimage.so.2) from the standard system dirs; make it discoverable.
+        # No-op on Windows.
+        env:
+          LD_LIBRARY_PATH: /usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
         run: |
           & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --package kde/kdemultimedia/kdenlive
 
