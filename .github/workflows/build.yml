@@ -361,6 +361,12 @@ jobs:
       # Package
       # -----------------------------------------------------------------------
       - name: Create package
+        env:
+          # Skip AppStream validation in appimagetool: appstreamcli checks
+          # bugtracker URLs (bugs.kde.org), which GitHub runner IPs cannot
+          # reach (KDE blocks them), so validation always fails with
+          # "url-not-reachable" warnings. The AppImage itself is unaffected.
+          NO_APPSTREAM: "1"
         run: |
           & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --package kde/kdemultimedia/kdenlive
 
