@@ -81,9 +81,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/cache
-          key: craft-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('.craft.ini') }}
+          key: craft-${{ runner.os }}-${{ matrix.target }}-v2-${{ hashFiles('.craft.ini') }}
           restore-keys: |
-            craft-${{ runner.os }}-${{ matrix.target }}-
+            craft-${{ runner.os }}-${{ matrix.target }}-v2-
 
       # -----------------------------------------------------------------------
       # Clear Android environment (Linux only)
@@ -258,6 +258,15 @@ jobs:
           curl -sSL -o "$HOME/craft/CraftMaster/downloads/archives/libs/frei0r-bigsh0t/2.6.tar.bz2" \
             "https://github.com/Rusbelito/kdenlive/releases/download/bigsh0t-2.6-mirror/bigsh0t-2.6.tar.bz2"
           sha256sum "$HOME/craft/CraftMaster/downloads/archives/libs/frei0r-bigsh0t/2.6.tar.bz2"
+          # pulseaudio: www.freedesktop.org returns 418 'I'm a teapot' to GitHub
+          # runner IPs (anti-bot), so pre-seed craft's download cache with the
+          # byte-identical mirror tarball (SHA256 0167649c... matches the
+          # blueprint's targetDigest for pulseaudio 17.0). Craft skips its own
+          # fetch when the archive is already present.
+          mkdir -p "$HOME/craft/CraftMaster/downloads/archives/libs/pulseaudio"
+          curl -sSL -o "$HOME/craft/CraftMaster/downloads/archives/libs/pulseaudio/pulseaudio-17.0.tar.gz" \
+            "https://github.com/Rusbelito/kdenlive/releases/download/pulseaudio-17.0-mirror/pulseaudio-17.0.tar.gz"
+          echo "0167649c734fc38f72034036d87dd8b27430a0f40d47fca36b1136714ff0e1cc  $HOME/craft/CraftMaster/downloads/archives/libs/pulseaudio/pulseaudio-17.0.tar.gz" | sha256sum -c -
 
       # -----------------------------------------------------------------------
       # Prepare build environment
@@ -279,6 +288,18 @@ jobs:
       - name: Install dependencies
         run: |
           & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --install-deps kde/kdemultimedia/kdenlive
+
+      # -----------------------------------------------------------------------
+      # Stage Craft downloads cache
+      # -----------------------------------------------------------------------
+      # Copy craft's download cache (all source tarballs) into ~/cache so the
+      # GitHub Actions cache stores it and future runs restore the archives.
+      # With every tarball present, craft never fetches from the internet, which
+      # makes the build immune to host-level blocking (freedesktop.org 418).
+      - name: Stage Craft downloads cache
+        run: |
+          New-Item -ItemType Directory -Force "$env:HOME/cache" | Out-Null
+          Copy-Item -Path "$env:HOME/craft/CraftMaster/downloads/*" -Destination "$env:HOME/cache/" -Recurse -Force
 
       # -----------------------------------------------------------------------
       # Build Kdenlive
