@@ -318,6 +318,17 @@ jobs:
           # "qt.qpa.xcb: could not connect to display" otherwise.
           QT_QPA_PLATFORM: offscreen
         run: |
+          if ($IsLinux) {
+              # TestMain.cpp resolves the MLT repository from $CRAFT_ROOT
+              # (<craft-root>/lib/mlt-7) and falls back to a NULL factory init
+              # when it is unset, which crashes the MLT-based tests.
+              $craft = "$env:HOME/craft/CraftMaster/linux-64-gcc"
+              $env:CRAFT_ROOT = $craft
+              $env:MLT_REPOSITORY = "$craft/lib/mlt-7"
+              $env:MLT_DATA = "$craft/share/mlt-7"
+              $env:MLT_PROFILES_PATH = "$craft/share/mlt-7/profiles"
+              $env:MLT_PRESETS_PATH = "$craft/share/mlt-7/presets"
+          }
           & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --test kde/kdemultimedia/kdenlive
         continue-on-error: true   # Don't fail build on test failures (for now)
 
