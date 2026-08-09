@@ -147,6 +147,10 @@ bool DocumentChecker::resolveProblemsWithGUI()
     int max = documentTractors.count();
     for (int i = 0; i < max; ++i) {
         QDomElement tractor = documentTractors.item(i).toElement();
+        if (Xml::hasXmlProperty(tractor, QStringLiteral("kdenlive:projectTractor"))) {
+            // This is a fake tractor to allow playing the active sequence, ignore
+            continue;
+        }
         tractorIds.append(tractor.attribute(QStringLiteral("id")));
         Q_EMIT pCore->loadingMessageIncrease();
         qApp->processEvents();
@@ -182,7 +186,6 @@ bool DocumentChecker::hasErrorInProject()
     QDomNodeList playlists = m_doc.elementsByTagName(QStringLiteral("playlist"));
     QStringList timelinePreviewIds;
     QDomElement mainBinPlaylist;
-    int requestedPlaylists = 2;
     for (int i = 0; i < playlists.count(); ++i) {
         QDomElement pl = playlists.at(i).toElement();
         if (pl.attribute(QStringLiteral("id")) == BinPlaylist::binPlaylistId) {
@@ -220,7 +223,6 @@ bool DocumentChecker::hasErrorInProject()
                 QDomElement e = m_binEntries.item(i).toElement();
                 m_binIds << e.attribute(QStringLiteral("producer"));
             }
-            requestedPlaylists--;
         } else if (Xml::getXmlProperty(pl, QStringLiteral("kdenlive:playlistid")) == QLatin1String("timeline_preview")) {
             // list timeline preview producers
             QDomNodeList entries = pl.elementsByTagName(QLatin1String("entry"));
@@ -228,12 +230,9 @@ bool DocumentChecker::hasErrorInProject()
                 QDomElement e = entries.item(i).toElement();
                 timelinePreviewIds << e.attribute(QStringLiteral("producer"));
             }
-            requestedPlaylists--;
-        }
-        if (requestedPlaylists == 0) {
-            break;
         }
     }
+    Q_ASSERT(!mainBinPlaylist.isNull());
 
     QDomNodeList documentTractors = m_doc.elementsByTagName(QStringLiteral("tractor"));
     QDomNodeList documentProducers = m_doc.elementsByTagName(QStringLiteral("producer"));

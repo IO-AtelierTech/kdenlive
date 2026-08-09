@@ -9,6 +9,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "kdenlivesettings.h"
 #include "layouts/layoutcollection.h"
 #include "layouts/layoutinfo.h"
+#include "utils/uiutils.h"
 #include <KLocalizedString>
 #include <KMessageBox>
 #include <KStandardGuiItem>
@@ -281,7 +282,7 @@ void LayoutManagerDialog::exportLayout()
         QMessageBox::warning(this, i18n("Export Layout"), i18n("Cannot find layout file for %1.", layoutId));
         return;
     }
-    QString fileName = QFileDialog::getSaveFileName(this, i18n("Export Layout"), layoutId + ".json", i18n("Kdenlive Layout (*.json)"));
+    QString fileName = UiUtils::getSaveFileName(this, i18n("Export Layout"), layoutId + ".json", i18n("Kdenlive Layout (*.json)"), QStringLiteral(".json"));
     if (fileName.isEmpty()) return;
 
     bool result = false;
@@ -332,11 +333,11 @@ void LayoutManagerDialog::addLayoutItem(const LayoutInfo &layout)
             toolTip = i18nc("@info:tooltip", "This layout contains horizontal and vertical profiles");
         } else {
             icon = m_horizontalProfile;
-            toolTip = i18nc("@info:tooltip", "This layout contains an horizontal profile");
+            toolTip = i18nc("@info:tooltip", "This layout contains a horizontal profile");
         }
     } else {
         icon = m_verticalProfile;
-        toolTip = i18nc("@info:tooltip", "This layout contains an vertical profile");
+        toolTip = i18nc("@info:tooltip", "This layout contains a vertical profile");
     }
     auto *item = new QListWidgetItem(icon, layout.displayName, m_listWidget);
     item->setData(Qt::UserRole, layout.internalId);

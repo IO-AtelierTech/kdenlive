@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2024,2025 Scarlett Moore <sgmoore@kde.org>
+# SPDX-FileCopyrightText: 2024-2026 Scarlett Moore <sgmoore@kde.org>
 #
 # SPDX-License-Identifier: CC0-1.0
 ---
@@ -34,7 +34,6 @@ apps:
       MLT_PROFILES_PATH: "$SNAP/usr/share/mlt-7/profiles/"
       MLT_PRESETS_PATH: "$SNAP/usr/share/mlt-7/presets/"
       ALSA_CONFIG_PATH: "$SNAP/kf6/etc/asound.conf"
-      LD_LIBRARY_PATH: "$SNAP/kf6/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR:$SNAP/ffmpeg-platform/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR:$LD_LIBRARY_PATH"
       PATH: $SNAP/ffmpeg-platform/usr/bin:$SNAP/usr/local/bin/:$PATH
       QT_PLUGIN_PATH: "$SNAP/usr/lib/$CRAFT_ARCH_TRIPLET/plugins:/snap/kf6-core24/current/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/plugins"
       QML_IMPORT_PATH: "$SNAP/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/qml:$SNAP//snap/kdenlive/current/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/qt6/qml:/snap/kf6-core24/current/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/qml"
@@ -48,11 +47,6 @@ package-repositories:
     key-id: 444DABCF3667D0283F894EDDE6D4736255751E5D
     url: http://origin.archive.neon.kde.org/user
     key-server: keyserver.ubuntu.com
-plugs:
-  ffmpeg-2404:
-    interface: content
-    target: ffmpeg-platform # the folder where this content snap will be mounted
-    default-provider: ffmpeg-2404
 slots:
   session-dbus-interface:
     interface: dbus
@@ -70,9 +64,71 @@ parts:
       - vosk
     stage:
       - "-pyvenv.cfg"
+  ffmpeg:
+    plugin: autotools
+    source: https://github.com/ffmpeg/ffmpeg.git
+    source-tag: v0.6.1
+    build-packages:
+      - yasm
+      - pkg-config
+      # Core Audio & Subtitles
+      - libass-dev
+      - libmp3lame-dev
+      - libopus-dev
+      - libvorbis-dev
+      - libsoxr-dev
+      # Core Video Codecs
+      - libx264-dev
+      - libx265-dev
+      - libvpx-dev
+      - libaom-dev
+      - libdav1d-dev
+      # Hardware Acceleration & System
+      - libva-dev
+      - libvdpau-dev
+      - libdrm-dev
+      - libasound2-dev
+    override-build: |
+      ./configure \
+        --prefix=/usr \
+        --enable-shared \
+        --disable-static \
+        --disable-doc \
+        --enable-gpl \
+        --enable-nonfree \
+        --enable-version3 \
+        --enable-pthreads \
+        --enable-pic \
+        \
+        # Fonts, Metadata, and Audio Enhancements
+        --enable-libass \
+        --enable-fontconfig \
+        --enable-libsoxr \
+        \
+        # Essential Video Codecs for Kdenlive Timeline & Rendering
+        --enable-libx264 \
+        --enable-libx265 \
+        --enable-libvpx \
+        --enable-libaom \
+        --enable-libdav1d \
+        \
+        # Essential Audio Codecs
+        --enable-libmp3lame \
+        --enable-libopus \
+        --enable-libvorbis \
+        \
+        # Hardware Acceleration (VAAPI/VDPAU)
+        --enable-vaapi \
+        --enable-vdpau \
+        --enable-libdrm
+
+      make -j$(nproc)
+      make install DESTDIR=$CRAFT_PART_INSTALL
+
   kdenlive:
     after:
       - python-deps
+      - ffmpeg
     parse-info:
       - usr/share/metainfo/org.kde.kdenlive.appdata.xml
     plugin: cmake
@@ -80,7 +136,16 @@ parts:
     source-type: local
     build-snaps:
       - ffmpeg-2404-sdk
+      - kde-qt6-core24-sdk/latest/beta
+      - kf6-core24-sdk/latest/beta
     build-packages:
+      - libxml2-dev
+      - gettext
+      - doxygen
+      - graphviz
+      - libxml2-utils
+      - docbook-xml
+      - docbook-xsl
       - librttr-dev
       - libmlt++-dev
       - libmlt-dev
@@ -117,21 +182,16 @@ parts:
       - -DQT_MAJOR_VERSION=6
       - -DBUILD_WITH_QT6=ON
       - -DBUILD_TESTING=OFF
-      - -DCMAKE_INSTALL_SYSCONFDIR=/etc
-      - -DCMAKE_INSTALL_LOCALSTATEDIR=/var
-      - -DCMAKE_EXPORT_NO_PACKAGE_REGISTRY=ON
-      - -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF
-      - -DCMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY=ON
-      - -DCMAKE_INSTALL_RUNSTATEDIR=/run
-      - -DCMAKE_SKIP_INSTALL_ALL_DEPENDENCY=ON
-      - -DCMAKE_VERBOSE_MAKEFILE=ON
-      - -DCMAKE_INSTALL_LIBDIR=lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR
-      - --log-level=STATUS
-      - -DCMAKE_LIBRARY_PATH=lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR
-      - -DCMAKE_FIND_ROOT_PATH="$CRAFT_STAGE;/snap/ffmpeg-2404-sdk/current;/snap/kde-qt6-core24-sdk/current;/snap/kf6-core24-sdk/current"
+      - -DCMAKE_FIND_ROOT_PATH="$CRAFT_STAGE;/snap/kde-qt6-core24-sdk/current;/snap/kf6-core24-sdk/current"
     build-environment:
-      - PKG_CONFIG_PATH: "/snap/ffmpeg-2404-sdk/current/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/pkgconfig"
-      - LD_LIBRARY_PATH: "${LD_LIBRARY_PATH}:/snap/ffmpeg-2404-sdk/current/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR"
+      - LIBCLANG_LIBDIR: /snap/kde-qt6-core24-sdk/current/usr/lib/llvm-19/lib
+      - LIBCLANG_PATH: /snap/kde-qt6-core24-sdk/current/usr/lib/llvm-19/bin
+      - LLVM_INSTALL_DIR: /snap/kde-qt6-core24-sdk/current/usr/lib/llvm-19
+      - PATH: /snap/kde-qt6-core24-sdk/current/usr/bin:/snap/kde-qt6-core24-sdk/current/usr/lib/llvm-19/bin:/snap/kde-pyside6-core24-sdk/current/usr/bin${PATH:+:$PATH}
+      - LDFLAGS: "-Wl,-Bdynamic"
+      - QT_PLUGIN_PATH: "$CRAFT_STAGE/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/plugins:/snap/kf6-core24-sdk/current/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/plugins:/snap/kde-qt6-core24-sdk/current/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/plugins"
+      - QML_IMPORT_PATH: "$CRAFT_STAGE/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/qml:/snap/kf6-core24-sdk/current/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/qml:/snap/kde-qt6-core24-sdk/current/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/qml"
+      - QT_INSTALL_QML: $QML_IMPORT_PATH
     override-build: |
       craftctl default
       if [ "$CRAFT_TARGET_ARCH" = amd64 ]; then
@@ -139,6 +199,7 @@ parts:
       fi
     stage:
       - -usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/libprotobuf*
+      - -usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/libc.a
     prime:
       - -usr/lib/*/cmake/*
       - -usr/include/*
@@ -164,10 +225,9 @@ parts:
     build-snaps:
       - core24
       - kf6-core24
-      - ffmpeg-2404
     override-prime: |
       set -eux
-      for snap in "core24" "kf6-core24" "ffmpeg-2404"; do
+      for snap in "core24" "kf6-core24"; do
           cd "/snap/$snap/current" && find . -type f,l -exec rm -rf "${CRAFT_PRIME}/{}" \;
       done
 

@@ -51,8 +51,8 @@ Item {
     property color borderColor: 'black'
     property bool hideCompoViews: !visible || width < root.minClipWidthForViews
     property bool hideDecorations: !root.showClipOverlays || trimInMouseArea.drag.active || trimOutMouseArea.drag.active
-    property int scrollStart: scrollView.contentX - (compositionRoot.modelStart * root.timeScale)
-    visible: scrollView.width + compositionRoot.scrollStart >= 0 && compositionRoot.scrollStart < compositionRoot.width
+    visible: scrollView.lastVisibleFrame > compositionRoot.modelStart && scrollView.firstVisibleFrame <= (compositionRoot.modelStart + compositionRoot.clipDuration)
+    property int scrollStart: visible ? scrollView.contentX - (compositionRoot.modelStart * root.timeScale) : 0
 
     property int mouseXPos: mouseArea.mouseX
     // We set coordinates to ensure the item can be found using childAt in timeline.qml getItemAtPosq
@@ -224,8 +224,8 @@ Item {
             id: mouseArea
             anchors.fill: parent
             acceptedButtons: Qt.RightButton
-            enabled: root.activeTool === K.ToolType.SelectTool && !dragProxyArea.pressed
-            hoverEnabled: root.activeTool === K.ToolType.SelectTool
+            enabled: !root.isPanning && root.activeTool === K.ToolType.SelectTool && !dragProxyArea.pressed
+            hoverEnabled: !root.isPanning && root.activeTool === K.ToolType.SelectTool
             Keys.onShortcutOverride: event => {event.accepted = compositionRoot.isGrabbed && (event.key === Qt.Key_Left || event.key === Qt.Key_Right || event.key === Qt.Key_Up || event.key === Qt.Key_Down || event.key === Qt.Key_Escape)}
             Keys.onLeftPressed: event => {
                 var offset = event.modifiers === Qt.ShiftModifier ? timeline.fps() : 1
@@ -247,7 +247,7 @@ Item {
             cursorShape: (trimInMouseArea.drag.active || trimOutMouseArea.drag.active)? Qt.SizeHorCursor : dragProxyArea.cursorShape
 
             onPressed: mouse => {
-                root.autoScrolling = false
+                root.blockAutoScroll = true
                 compositionRoot.forceActiveFocus();
                 root.mainItemId = compositionRoot.clipId
                 if (mouse.button == Qt.RightButton) {
@@ -258,7 +258,7 @@ Item {
                 }
             }
             onReleased: {
-                root.autoScrolling = timeline.autoScroll
+                root.blockAutoScroll = false
             }
             onEntered: {
                 updateDrag()
@@ -299,15 +299,19 @@ Item {
                 drag.target: trimInMouseArea
                 drag.axis: Drag.XAxis
                 drag.smoothed: false
-                onPressed: {
-                    root.autoScrolling = false
+                onPressed: mouse => {
+                    if (mouse.modifiers & Qt.ControlModifier && (root.activeTool === K.ToolType.SelectTool || root.activeTool === K.ToolType.RippleTool)) {
+                        mouse.accepted = false
+                        return
+                    }
+                    root.blockAutoScroll = true
                     root.trimInProgress = true;
                     compositionRoot.originalX = compositionRoot.x
                     compositionRoot.originalDuration = clipDuration
                     anchors.left = undefined
                 }
                 onReleased: {
-                    root.autoScrolling = timeline.autoScroll
+                    root.blockAutoScroll = false
                     anchors.left = parent.left
                     compositionRoot.trimmedIn(compositionRoot)
                     trimIn.opacity = 0
@@ -370,15 +374,19 @@ Item {
                 visible: enabled && root.activeTool === K.ToolType.SelectTool
                 enabled: !compositionRoot.grouped && (pressed || displayRect.width > 3 * width)
 
-                onPressed: {
-                    root.autoScrolling = false
+                onPressed: mouse => {
+                    if (mouse.modifiers & Qt.ControlModifier && (root.activeTool === K.ToolType.SelectTool || root.activeTool === K.ToolType.RippleTool)) {
+                        mouse.accepted = false
+                        return
+                    }
+                    root.blockAutoScroll = true
                     root.trimInProgress = true;
                     compositionRoot.originalDuration = clipDuration
                     anchors.right = undefined
                 }
                 onReleased: {
                     trimOut.opacity = 0
-                    root.autoScrolling = timeline.autoScroll
+                    root.blockAutoScroll = false
                     anchors.right = parent.right
                     compositionRoot.trimmedOut(compositionRoot)
                     updateDrag()
@@ -488,7 +496,8 @@ Item {
             id: effectRow
             clip: true
             anchors.fill: parent
-            //asynchronous: true
+            active: compositionRoot.visible
+            asynchronous: true
             visible: status == Loader.Ready && compositionRoot.showKeyframes && compositionRoot.keyframeModel && compositionRoot.width > 2 * root.baseUnit
             source: compositionRoot.hideClipViews || compositionRoot.keyframeModel == undefined ? "" : "KeyframeView.qml"
             Binding {

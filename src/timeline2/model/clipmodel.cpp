@@ -20,6 +20,7 @@
 #include <QDebug>
 #include <effects/effectsrepository.hpp>
 #include <mlt++/MltProducer.h>
+#include <limits>
 #include <utility>
 
 ClipModel::ClipModel(const std::shared_ptr<TimelineModel> &parent, std::shared_ptr<Mlt::Producer> prod, const QString &binClipId, int id,
@@ -255,19 +256,20 @@ bool ClipModel::requestResize(int size, bool right, Fun &undo, Fun &redo, bool l
                 QModelIndex ix = ptr->makeClipIndexFromID(m_id);
                 ptr->notifyChange(ix, ix, roles);
                 // invalidate timeline preview
-                if (logUndo && !ptr->getTrackById_const(m_currentTrackId)->isAudioTrack()) {
+                if (logUndo) {
+                    bool isAudio = ptr->getTrackById_const(m_currentTrackId)->isAudioTrack();
                     if (right) {
                         int newOut = m_position + getOut() - getIn();
                         if (oldOut < newOut) {
-                            Q_EMIT ptr->invalidateZone(oldOut, newOut);
+                            isAudio ? Q_EMIT ptr->invalidateAudioZone(oldOut, newOut) : Q_EMIT ptr->invalidateZone(oldOut, newOut);
                         } else {
-                            Q_EMIT ptr->invalidateZone(newOut, oldOut);
+                            isAudio ? Q_EMIT ptr->invalidateAudioZone(newOut, oldOut) : Q_EMIT ptr->invalidateZone(newOut, oldOut);
                         }
                     } else {
                         if (oldIn < m_position) {
-                            Q_EMIT ptr->invalidateZone(oldIn, m_position);
+                            isAudio ? Q_EMIT ptr->invalidateAudioZone(oldIn, m_position) : Q_EMIT ptr->invalidateZone(oldIn, m_position);
                         } else {
-                            Q_EMIT ptr->invalidateZone(m_position, oldIn);
+                            isAudio ? Q_EMIT ptr->invalidateAudioZone(m_position, oldIn) : Q_EMIT ptr->invalidateZone(m_position, oldIn);
                         }
                     }
                 }
@@ -298,7 +300,7 @@ bool ClipModel::requestResize(int size, bool right, Fun &undo, Fun &redo, bool l
                 }
                 return true;
             }
-            qDebug() << "============\n+++++++++++++++++\nREVRSE TRACK OP FAILED FOR: " << m_id << "\n\n++++++++++++++++";
+            qDebug() << "============\n+++++++++++++++++\nREVERSE TRACK OP FAILED FOR: " << m_id << "\n\n++++++++++++++++";
             return false;
         };
         Fun preProcess = [this, roles, oldIn, oldOut, newIn = m_position, newOut = m_position + getOut() - getIn(), right, logUndo]() {
@@ -307,18 +309,19 @@ bool ClipModel::requestResize(int size, bool right, Fun &undo, Fun &redo, bool l
                     QModelIndex ix = ptr->makeClipIndexFromID(m_id);
                     ptr->notifyChange(ix, ix, roles);
                     // invalidate timeline preview
-                    if (logUndo && !ptr->getTrackById_const(m_currentTrackId)->isAudioTrack()) {
+                    if (logUndo) {
+                        bool isAudio = ptr->getTrackById_const(m_currentTrackId)->isAudioTrack();
                         if (right) {
                             if (oldOut < newOut) {
-                                Q_EMIT ptr->invalidateZone(oldOut, newOut);
+                                isAudio ? Q_EMIT ptr->invalidateAudioZone(oldOut, newOut) : Q_EMIT ptr->invalidateZone(oldOut, newOut);
                             } else {
-                                Q_EMIT ptr->invalidateZone(newOut, oldOut);
+                                isAudio ? Q_EMIT ptr->invalidateAudioZone(newOut, oldOut) : Q_EMIT ptr->invalidateZone(newOut, oldOut);
                             }
                         } else {
                             if (oldIn < newIn) {
-                                Q_EMIT ptr->invalidateZone(oldIn, newIn);
+                                isAudio ? Q_EMIT ptr->invalidateAudioZone(oldIn, newIn) : Q_EMIT ptr->invalidateZone(oldIn, newIn);
                             } else {
-                                Q_EMIT ptr->invalidateZone(newIn, oldIn);
+                                isAudio ? Q_EMIT ptr->invalidateAudioZone(newIn, oldIn) : Q_EMIT ptr->invalidateZone(newIn, oldIn);
                             }
                         }
                     }
@@ -386,8 +389,10 @@ bool ClipModel::requestSlip(int offset, Fun &undo, Fun &redo, bool logUndo)
                 ptr->notifyChange(ix, ix, roles);
                 pCore->refreshProjectMonitorOnce();
                 // invalidate timeline preview
-                if (logUndo && !ptr->getTrackById_const(m_currentTrackId)->isAudioTrack()) {
-                    Q_EMIT ptr->invalidateZone(m_position, m_position + getPlaytime());
+                if (logUndo) {
+                    bool isAudio = ptr->getTrackById_const(m_currentTrackId)->isAudioTrack();
+                    isAudio ? Q_EMIT ptr->invalidateAudioZone(m_position, m_position + getPlaytime())
+                            : Q_EMIT ptr->invalidateZone(m_position, m_position + getPlaytime());
                 }
             }
         }
@@ -409,8 +414,10 @@ bool ClipModel::requestSlip(int offset, Fun &undo, Fun &redo, bool logUndo)
                     QModelIndex ix = ptr->makeClipIndexFromID(m_id);
                     ptr->notifyChange(ix, ix, roles);
                     pCore->refreshProjectMonitorOnce();
-                    if (logUndo && !ptr->getTrackById_const(m_currentTrackId)->isAudioTrack()) {
-                        Q_EMIT ptr->invalidateZone(m_position, m_position + getPlaytime());
+                    if (logUndo) {
+                        bool isAudio = ptr->getTrackById_const(m_currentTrackId)->isAudioTrack();
+                        isAudio ? Q_EMIT ptr->invalidateAudioZone(m_position, m_position + getPlaytime())
+                                : Q_EMIT ptr->invalidateZone(m_position, m_position + getPlaytime());
                     }
                 }
             }
@@ -867,12 +874,20 @@ void ClipModel::refreshProducerFromBin(int trackId, PlaylistState::ClipState sta
     int in = getIn();
     int out = getOut();
     if (!qFuzzyCompare(speed, m_speed) && !qFuzzyIsNull(speed)) {
-        in = int(in * std::abs(m_speed / speed));
-        out = in + getPlaytime() - 1;
-        // prevent going out of the clip's range
-        out = std::min(out, int(double(m_producer->get_length()) * std::abs(m_speed / speed)) - 1);
+        const double currentAbsSpeed = qFuzzyIsNull(m_speed) ? 1. : std::abs(m_speed);
+        const double targetAbsSpeed = std::abs(speed);
+        const double speedRatio = currentAbsSpeed / targetAbsSpeed;
+        const qint64 mappedIn = qRound64(double(in) * speedRatio);
+        const qint64 mappedOut = qRound64(double(out + 1) * speedRatio) - 1;
+        const qint64 clampedIn = qBound<qint64>(qint64(0), mappedIn, qint64(std::numeric_limits<int>::max()));
+        const qint64 clampedOut = qBound<qint64>(clampedIn, mappedOut, qint64(std::numeric_limits<int>::max()));
+        in = int(clampedIn);
+        out = int(clampedOut);
+        // Prevent going out of the clip's range.
+        const qint64 maxOut64 = qBound<qint64>(qint64(0), qRound64(double(m_producer->get_length()) * speedRatio) - 1,
+                               qint64(std::numeric_limits<int>::max()));
+        out = qMin(out, int(maxOut64));
         m_speed = speed;
-        qDebug() << "changing speed" << in << out << m_speed;
     }
     QString remapMap;
     int remapPitch = 0;
@@ -911,7 +926,18 @@ void ClipModel::refreshProducerFromBin(int trackId, PlaylistState::ClipState sta
     std::shared_ptr<ProjectClip> binClip = pCore->projectItemModel()->getClipByBinID(m_binClipId);
     // Q_ASSERT(binClip->statusReady());
     std::shared_ptr<Mlt::Producer> binProducer = binClip->getTimelineProducer(trackId, m_id, state, stream, m_speed, secondPlaylist, remapInfo);
+    int length = m_producer->get_int("length");
     m_producer = std::move(binProducer);
+    if (m_endlessResize && m_producer->parent().get_length() < length) {
+        // if endless resize is enabled, we have to carry the length over from
+        // the other instance, as we might have extended it in a previous
+        // resize.
+        // Update track producer first
+        m_producer->parent().set("length", length);
+        m_producer->parent().set("out", length - 1);
+        // Now update clip producer
+        m_producer->set("length", length);
+    }
     m_producer->set_in_and_out(in, out);
     if (m_hasTimeRemap != hasTimeRemap()) {
         m_hasTimeRemap = !m_hasTimeRemap;
@@ -963,6 +989,10 @@ void ClipModel::refreshProducerFromBin(int trackId)
         hasPitch = m_producer->parent().get_int("warp_pitch") == 1;
     }
     int stream = m_producer->parent().get_int("audio_index");
+    if (m_producer->property_exists("kdenlive:audio_index")) {
+        // The clip was disabled, restore original audio stream
+        stream = m_producer->get_int("kdenlive:audio_index");
+    }
     refreshProducerFromBin(trackId, m_currentState, stream, 0, hasPitch, m_subPlaylistIndex == 1, hasTimeRemap());
 }
 
@@ -1046,9 +1076,10 @@ bool ClipModel::useTimewarpProducer(double speed, bool pitchCompensate, bool cha
     std::function<bool(void)> local_redo = []() { return true; };
     double previousSpeed = getSpeed();
     int oldDuration = getPlaytime();
-    int newDuration = qRound(oldDuration * std::fabs(m_speed / speed));
+    const double speedRatio = std::fabs(previousSpeed / speed);
     int oldOut = getOut();
     int oldIn = getIn();
+    int newDuration = qMax(1, int(qRound64(double(oldDuration) * speedRatio)));
     bool revertSpeed = false;
     if (speed < 0) {
         if (previousSpeed > 0) {
@@ -1072,9 +1103,8 @@ bool ClipModel::useTimewarpProducer(double speed, bool pitchCompensate, bool cha
         };
     }
     if (revertSpeed) {
-        int out = getOut();
-        int in = qMax(0, qRound((m_producer->get_length() - 1 - out) * std::fabs(m_speed / speed)));
-        out = in + newDuration;
+        int in = qMax(0, int(qRound64(double(m_producer->get_length() - oldOut - 1) * speedRatio)));
+        int out = in + newDuration;
         operation = [operation, in, out, this]() {
             bool res = operation();
             if (res) {
@@ -1141,6 +1171,9 @@ bool ClipModel::audioMultiStream() const
 
 int ClipModel::audioStream() const
 {
+    if (m_currentState == PlaylistState::Disabled) {
+        return m_producer->get_int("kdenlive:audio_index");
+    }
     return m_producer->parent().get_int("audio_index");
 }
 
@@ -1263,6 +1296,9 @@ Fun ClipModel::setClipState_lambda(PlaylistState::ClipState state)
 {
     QWriteLocker locker(&m_lock);
     return [this, state]() {
+        if (state == m_currentState) {
+            return true;
+        }
         if (auto ptr = m_parent.lock()) {
             m_currentState = state;
             // Enforce producer reload
@@ -1270,7 +1306,7 @@ Fun ClipModel::setClipState_lambda(PlaylistState::ClipState state)
             if (m_currentTrackId != -1 && ptr->isClip(m_id)) { // if this is false, the clip is being created. Don't update model in that case
                 refreshProducerFromBin(m_currentTrackId);
                 QModelIndex ix = ptr->makeClipIndexFromID(m_id);
-                Q_EMIT ptr->dataChanged(ix, ix, {TimelineModel::StatusRole});
+                Q_EMIT ptr->dataChanged(ix, ix, {TimelineModel::PlaylistStateRole, TimelineModel::AudioStreamRole});
             }
             return true;
         }
@@ -1595,6 +1631,8 @@ void ClipModel::switchBinReference(const QString newId, const QUuid &uuid)
         // invalidate timeline preview
         if (!ptr->getTrackById_const(m_currentTrackId)->isAudioTrack()) {
             Q_EMIT ptr->invalidateZone(m_position, m_position + getPlaytime());
+        } else {
+            Q_EMIT ptr->invalidateAudioZone(m_position, m_position + getPlaytime());
         }
     }
 }

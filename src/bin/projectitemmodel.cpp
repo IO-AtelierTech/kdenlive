@@ -525,8 +525,11 @@ QStringList ProjectItemModel::getAllSequenceBinIds(const QUuid uuid, QList<QUuid
     }
     (*processedUuids) << uuid;
     for (const auto &clip : m_allItems) {
-        // auto c = std::static_pointer_cast<AbstractProjectItem>(clip.second.lock());
-        auto c = std::static_pointer_cast<ProjectClip>(clip.second.lock());
+        auto i = std::static_pointer_cast<AbstractProjectItem>(clip.second.lock());
+        if (i && i->itemType() != AbstractProjectItem::ClipItem) {
+            continue;
+        }
+        auto c = std::static_pointer_cast<ProjectClip>(i);
         if (c && c->clipType() != ClipType::Timeline) {
             if (c->isIncludedInSequence(uuid)) {
                 result.push_back(c->clipId());
@@ -2089,4 +2092,13 @@ const QString ProjectItemModel::getBinClipIdByUuid(const QString uuid)
         }
     }
     return QString();
+}
+
+std::pair<PlaylistState::ClipState, ClipType::ProducerType> ProjectItemModel::getClipState(int itemId) const
+{
+    std::shared_ptr<ProjectClip> clip = getClipByBinID(QString::number(itemId));
+    Q_ASSERT(clip != nullptr);
+    bool audio = clip->hasAudio();
+    bool video = clip->hasVideo();
+    return {audio ? (video ? PlaylistState::Disabled : PlaylistState::AudioOnly) : PlaylistState::VideoOnly, clip->clipType()};
 }

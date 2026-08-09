@@ -122,6 +122,12 @@ public:
     virtual const QStringList getGPUInfo();
     /** @brief Returns the current frame as image */
     QImage image() const;
+    /** @brief Enforce fixed image size */
+    void setFixedImageSize(const QSize fixedSize);
+    /** @brief Ensure image position on fixed size */
+    void updateImagePosition();
+    /** @brief Enable/disable timer to hide mouse cursor in fullscreen */
+    void enableMouseTimer(bool enable);
 
 protected:
     void mouseReleaseEvent(QMouseEvent *event) override;
@@ -157,6 +163,8 @@ public Q_SLOTS:
      *  @returns true is scaling was changed
      */
     bool updateScaling();
+    /** @brief Update aspect ration and colorspace from current project, to be used for mirror monitor */
+    void resetAspect();
 
 Q_SIGNALS:
     void frameDisplayed(const SharedFrame &frame);
@@ -194,10 +202,13 @@ protected:
     int m_maxTextureSize;
     /** @brief For some reason on Qt6 fullscreen switch, image position is not correctly updated, so use this to track state */
     bool refreshZoom{false};
+    bool m_fullScreen{false};
     SharedFrame m_sharedFrame;
     bool m_sendFrame;
     QSemaphore m_analyseSem;
     float m_zoom;
+    QRectF m_rect;
+    QPointF m_monitorOffset;
     QSize m_profileSize;
     QMutex m_mutex;
     bool m_isInitialized{false};
@@ -208,14 +219,15 @@ protected:
     virtual void updateRulerHeight(int addedHeight);
 
 private:
-    QRectF m_rect;
     QRect m_effectRect;
     QPoint m_panStart;
     QPoint m_dragStart;
     QSemaphore m_initSem;
+    QTimer m_mouseTimer;
     bool m_qmlEvent;
     bool m_swallowDrop{false};
     int m_bckpMax;
+    QSize m_fixedSize;
     std::unique_ptr<Mlt::Filter> m_glslManager;
     std::unique_ptr<Mlt::Event> m_threadStartEvent;
     std::unique_ptr<Mlt::Event> m_threadStopEvent;
@@ -255,6 +267,8 @@ private:
     bool playZone(int in, int out, bool startFromIn, bool loop, bool zoneMode);
     bool isPaused() const;
     void pause();
+    /** @brief Update the producer speed, and sync the monitorproxy's speed */
+    void setProducerSpeed(double speed);
 
 private Q_SLOTS:
     void resizeVideo(int width, int height);
@@ -263,12 +277,16 @@ private Q_SLOTS:
     void switchRecordState(bool on);
     /** @brief Enforce a zoom refresh, can be useful when switching to/from fullscreen to adjust image size/position */
     void forceRefreshZoom();
+    /** @brief Hide cursor on inactivity over monitor */
+    void blankCursor();
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
     void mousePressEvent(QMouseEvent *) override;
     void mouseMoveEvent(QMouseEvent *) override;
     void keyPressEvent(QKeyEvent *event) override;
+    void focusInEvent(QFocusEvent *event) override;
+    void focusOutEvent(QFocusEvent *event) override;
 };
 
 class RenderThread : public QThread

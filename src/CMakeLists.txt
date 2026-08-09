@@ -210,13 +210,26 @@ set(ICON_FILES
 ecm_add_app_icon(kdenlive ICONS ${ICON_FILES})
 
 ## Kdenlive Executable
-add_executable(kdenlive main.cpp ${kdenlive_extra_SRCS} ${kdenlive})
+qt_add_executable(kdenlive MACOSX_BUNDLE main.cpp ${kdenlive_extra_SRCS} ${kdenlive})
 target_include_directories(kdenlive
     PRIVATE ${CMAKE_BINARY_DIR}
     )
-target_include_directories(kdenlive
-	SYSTEM PRIVATE ${MLT_INCLUDE_DIR} ${MLTPP_INCLUDE_DIR})
-target_link_libraries(kdenlive kdenliveLib kdenliveLibplugin)
+
+if (APPLE)
+# Apple app package
+set_target_properties(kdenlive PROPERTIES MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/../data/Info.plist)
+set_target_properties(kdenlive PROPERTIES
+    MACOSX_BUNDLE_DISPLAY_NAME "Kdenlive"
+    MACOSX_BUNDLE_BUNDLE_NAME "Kdenlive"
+    MACOSX_BUNDLE_LONG_VERSION_STRING "Kdenlive ${KDENLIVE_VERSION}"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "${RELEASE_SERVICE_VERSION_MAJOR}.${RELEASE_SERVICE_VERSION_MINOR}"
+    MACOSX_BUNDLE_BUNDLE_VERSION "${KDENLIVE_VERSION}"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "org.kde.Kdenlive"
+    MACOSX_BUNDLE_COPYRIGHT "2000-2022 The Kdenlive Authors")
+#set_target_properties(kdenlive PROPERTIES MACOSX_BUNDLE ON)
+endif()
+
+target_link_libraries(kdenlive PUBLIC kdenliveLib kdenliveLibplugin)
 install(TARGETS kdenlive DESTINATION ${KDE_INSTALL_BINDIR})
 
 ## Kdenlive Lib
@@ -228,8 +241,7 @@ target_include_directories(kdenliveLib PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/utils
     ${CMAKE_CURRENT_SOURCE_DIR}/timeline2/view/qml
     )
-target_include_directories(kdenliveLib
-	SYSTEM  PRIVATE ${MLT_INCLUDE_DIR} ${MLTPP_INCLUDE_DIR})
+
 # Adds Qt definitions and include directories, and sets QT_LIBRARIES according
 # to the components requested in find_package().
 # KDE definitions and include directories *must* always come first, Qt follows
@@ -257,8 +269,7 @@ target_link_libraries(kdenliveLib PUBLIC
     KF${KF_MAJOR}::PurposeWidgets
     ${OPENGL_LIBRARIES}
     ${OPENGLES_LIBRARIES}
-    ${MLT_LIBRARIES}
-    ${MLTPP_LIBRARIES}
+    Mlt7::mlt++
     OTIO::opentimelineio
     ${CMAKE_DL_LIBS}
     ${CMAKE_THREAD_LIBS_INIT}
@@ -270,6 +281,7 @@ if(KF6_VERSION VERSION_GREATER_EQUAL "6.8.0")
 endif()
 
 target_link_libraries(kdenliveLib PUBLIC
+    Qt${QT_MAJOR_VERSION}::Core
     Qt${QT_MAJOR_VERSION}::Svg
     Qt${QT_MAJOR_VERSION}::Quick
     Qt${QT_MAJOR_VERSION}::QuickControls2
@@ -313,10 +325,10 @@ endif()
 if(DRMINGW_FOUND)
     target_compile_definitions(kdenlive PRIVATE -DUSE_DRMINGW)
     target_include_directories(kdenlive SYSTEM PRIVATE ${DRMINGW_INCLUDE_DIR})
-    target_link_libraries(kdenlive ${DRMINGW_LIBRARY})
+    target_link_libraries(kdenlive PUBLIC ${DRMINGW_LIBRARY})
 elseif(KF${KF_MAJOR}Crash_FOUND)
     target_compile_definitions(kdenlive PRIVATE -DKF5_USE_CRASH)
-    target_link_libraries(kdenlive KF${KF_MAJOR}::Crash)
+    target_link_libraries(kdenlive PUBLIC KF${KF_MAJOR}::Crash)
 endif()
 
 if(Q_WS_X11)
@@ -334,11 +346,6 @@ if(HAVE_LINUX_INPUT_H)
     target_compile_definitions(kdenliveLib PRIVATE -DUSE_JOGSHUTTLE)
     target_link_libraries(kdenliveLib PUBLIC media_ctrl)
 endif()
-
-if(APPLE)
-    set_target_properties(kdenlive PROPERTIES MACOSX_BUNDLE ON)
-endif()
-
 
 if(NOT USE_DBUS)
     target_compile_definitions(kdenliveLib PRIVATE -DNODBUS)

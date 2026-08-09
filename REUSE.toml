@@ -13,6 +13,12 @@ SPDX-FileCopyrightText = "none"
 SPDX-License-Identifier = "CC0-1.0"
 
 [[annotations]]
+path = ["data/transitions/previews/**.webp"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "none"
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
 path = ["data/effects/**/CMakeLists.txt", "data/effects/CMakeLists.txt"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "none"
@@ -133,7 +139,7 @@ SPDX-FileCopyrightText = "Jean-Baptiste Mardelle"
 SPDX-License-Identifier = "CC0-1.0"
 
 [[annotations]]
-path = ["data/excluded_effects.txt", "data/excluded_transitions.txt", "data/included_effects.txt", "data/included_transitions.txt", "data/tenbit_transitions.txt", "data/tenbit_effects.txt"]
+path = ["data/excluded_effects.txt", "data/excluded_transitions.txt", "data/hidden_effects.txt", "data/hidden_transitions.txt", "data/included_effects.txt", "data/included_transitions.txt", "data/tenbit_transitions.txt", "data/tenbit_effects.txt"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Jean-Baptiste Mardelle, Massimo Stella"
 SPDX-License-Identifier = "CC0-1.0"
@@ -142,6 +148,12 @@ SPDX-License-Identifier = "CC0-1.0"
 path = "data/scripts/**.txt"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2024 Jean-Baptiste Mardelle"
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+path = "data/transitions/parameters.txt"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2025 Swastik Patel, Jean-Baptiste Mardelle"
 SPDX-License-Identifier = "CC0-1.0"
 
 [[annotations]]

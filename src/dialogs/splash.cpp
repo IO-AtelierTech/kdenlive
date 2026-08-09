@@ -87,19 +87,18 @@ Splash::Splash(const QString version, const QStringList urls, const QStringList 
         connect(m_rootObject, SIGNAL(openTemplate(QString)), this, SIGNAL(openTemplate(QString)));
         connect(m_rootObject, SIGNAL(showWelcome(bool)), this, SLOT(updateWelcomeDisplay(bool)));
         connect(m_rootObject, SIGNAL(switchPalette(bool)), this, SIGNAL(switchPalette(bool)));
-        connect(m_rootObject, SIGNAL(clearHistory()), this, SIGNAL(clearHistory()));
-        connect(m_rootObject, SIGNAL(clearProfiles()), this, SIGNAL(clearProfiles()));
-        connect(m_rootObject, SIGNAL(forgetFile(QString)), this, SIGNAL(forgetFile(QString)));
-        connect(m_rootObject, SIGNAL(forgetProfile(QString)), this, SIGNAL(forgetProfile(QString)));
-        if (m_hasCrashRecovery) {
-            // All signals should also trigger a release lock
-            connect(m_rootObject, SIGNAL(resetConfig()), this, SIGNAL(resetConfig()));
-            connect(m_rootObject, SIGNAL(openBlank()), this, SIGNAL(releaseLock()));
-            connect(m_rootObject, SIGNAL(openOtherFile()), this, SIGNAL(releaseLock()));
-            connect(m_rootObject, SIGNAL(openFile(QString)), this, SIGNAL(releaseLock()));
-            connect(m_rootObject, SIGNAL(openTemplate(QString)), this, SIGNAL(releaseLock()));
-            connect(m_rootObject, SIGNAL(firstStart(QString, QString, bool, int, int)), this, SIGNAL(releaseLock()));
-        }
+        connect(m_rootObject, SIGNAL(clearHistory()), this, SLOT(clearHistory()));
+        connect(m_rootObject, SIGNAL(clearProfiles()), this, SLOT(clearProfiles()));
+        connect(m_rootObject, SIGNAL(forgetFile(QString)), this, SLOT(forgetFile(QString)));
+        connect(m_rootObject, SIGNAL(forgetProfile(QString)), this, SLOT(forgetProfile(QString)));
+
+        // All signals should also trigger a release lock
+        connect(m_rootObject, SIGNAL(resetConfig()), this, SIGNAL(resetConfig()));
+        connect(m_rootObject, SIGNAL(openBlank()), this, SIGNAL(releaseLock()));
+        connect(m_rootObject, SIGNAL(openOtherFile()), this, SIGNAL(releaseLock()));
+        connect(m_rootObject, SIGNAL(openFile(QString)), this, SIGNAL(releaseLock()));
+        connect(m_rootObject, SIGNAL(openTemplate(QString)), this, SIGNAL(releaseLock()));
+        connect(m_rootObject, SIGNAL(firstStart(QString, QString, bool, int, int)), this, SIGNAL(releaseLock()));
         connect(m_rootObject, SIGNAL(firstStart(QString, QString, bool, int, int)), this, SIGNAL(firstStart(QString, QString, bool, int, int)));
     } else {
         if (m_hasCrashRecovery || m_wasUpgraded) {
@@ -133,7 +132,7 @@ bool Splash::hasCrashRecovery() const
 
 bool Splash::hasEventLoop() const
 {
-    return m_hasCrashRecovery || (!m_showWelcome && m_wasUpgraded);
+    return m_hasCrashRecovery || m_showWelcome || (!m_showWelcome && m_wasUpgraded);
 }
 
 bool Splash::wasUpgraded() const
@@ -148,7 +147,7 @@ void Splash::updateWelcomeDisplay(bool show)
 
 void Splash::fadeOutAndDelete()
 {
-    QMetaObject::invokeMethod(m_rootObject, "fade");
+    QMetaObject::invokeMethod(m_rootObject, "close");
     // Plan deletion
     QTimer::singleShot(100, this, &Splash::deleteLater);
 }
@@ -158,8 +157,59 @@ void Splash::fadeOut()
     QMetaObject::invokeMethod(m_rootObject, "fade");
 }
 
+void Splash::setReady()
+{
+    QMetaObject::invokeMethod(m_rootObject, "enableActions");
+}
+
 void Splash::showProgressMessage(const QString &message, int)
 {
     QMetaObject::invokeMethod(m_rootObject, "displayProgress", Qt::DirectConnection, Q_ARG(QVariant, message));
     qApp->processEvents();
+}
+
+void Splash::clearHistory()
+{
+    KConfigGroup history(KSharedConfig::openConfig(), "Recent Files");
+    history.deleteGroup();
+}
+
+void Splash::forgetFile(const QString &path)
+{
+    KConfigGroup history(KSharedConfig::openConfig(), "Recent Files");
+    auto entries = history.entryMap();
+    QString entryName;
+    for (auto i = entries.cbegin(), end = entries.cend(); i != end; ++i) {
+        if (i.value() == path) {
+            entryName = i.key();
+            break;
+        }
+    }
+    if (!entryName.isEmpty()) {
+        history.deleteEntry(entryName);
+        entryName.replace(QStringLiteral("File"), QStringLiteral("Name"));
+        history.deleteEntry(entryName);
+    }
+}
+
+void Splash::forgetProfile(const QString &path)
+{
+    KConfigGroup history(KSharedConfig::openConfig(), "Recent Profiles");
+    QStringList profileIds = history.readEntry("recentProfiles").split(QLatin1Char(','));
+    QStringList profileNames = history.readEntry("recentProfileNames").split(QLatin1Char(','));
+    int ix = profileIds.indexOf(path);
+    if (ix > -1) {
+        profileIds.removeAt(ix);
+        if (profileNames.size() > ix) {
+            profileNames.removeAt(ix);
+        }
+        history.writeEntry("recentProfiles", profileIds);
+        history.writeEntry("recentProfileNames", profileNames);
+    }
+}
+
+void Splash::clearProfiles()
+{
+    KConfigGroup history(KSharedConfig::openConfig(), "Recent Profiles");
+    history.deleteGroup();
 }

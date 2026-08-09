@@ -550,11 +550,45 @@ void TimelineController::insertNewMix(int tid, int position, const QString &tran
 
 int TimelineController::insertNewCompositionAtPos(int tid, int position, const QString &transitionId)
 {
-    // TODO: adjust position and duration to existing clips ?
-    return insertComposition(tid, position, transitionId, true);
+    int topCid = m_model->getTrackById_const(tid)->getClipByStartPosition(position);
+    if (topCid > 0) {
+        return addCompositionToClip(transitionId, topCid, 0);
+    } else {
+        int lowerVideoTrackId = m_model->getPreviousVideoTrackIndex(tid);
+        if (lowerVideoTrackId > 0) {
+            int lowerCid = m_model->getTrackById_const(lowerVideoTrackId)->getClipByStartPosition(position);
+            if (lowerCid > 0) {
+                // There is a clip on track below
+                topCid = m_model->getTrackById_const(tid)->getClipByPosition(position);
+                if (topCid > -1) {
+                    int outPos = qMin(m_model->getClipEnd(lowerCid), m_model->getClipEnd(topCid));
+                    return insertComposition(tid, position, transitionId, true, outPos - position);
+                }
+            } else {
+                // Check if we have clips above / below
+                topCid = m_model->getTrackById_const(tid)->getClipByPosition(position);
+                if (topCid > -1) {
+                    int lowerCid = m_model->getTrackById_const(lowerVideoTrackId)->getClipByPosition(position);
+                    if (lowerCid > -1) {
+                        // Find the clip starting last
+                        if (m_model->getClipPosition(topCid) > m_model->getClipPosition(lowerCid)) {
+                            // Top clip is after bottom clip
+                            return addCompositionToClip(transitionId, topCid, 0);
+                        } else {
+                            // Bottom clip is after top clip
+                            int outPos = qMin(m_model->getClipEnd(lowerCid), m_model->getClipEnd(topCid));
+                            position = m_model->getClipPosition(lowerCid);
+                            return insertComposition(tid, position, transitionId, true, outPos - position);
+                        }
+                    }
+                }
+            }
+        }
+        return insertComposition(tid, position, transitionId, true);
+    }
 }
 
-int TimelineController::insertNewComposition(int tid, int clipId, int offset, const QString &transitionId, bool logUndo)
+int TimelineController::insertNewComposition(int tid, int clipId, int offset, QString transitionId, bool logUndo)
 {
     int id;
     int minimumPos = clipId > -1 ? m_model->getClipPosition(clipId) : offset;
@@ -617,6 +651,11 @@ int TimelineController::insertNewComposition(int tid, int clipId, int offset, co
     duration = finalPos.second;
 
     std::unique_ptr<Mlt::Properties> props(nullptr);
+    if (TransitionsRepository::get()->isLuma(transitionId)) {
+        props = std::make_unique<Mlt::Properties>();
+        props->set("resource", transitionId.toUtf8().constData());
+        transitionId = QStringLiteral("dissolve");
+    }
     if (revert) {
         props = std::make_unique<Mlt::Properties>();
         if (transitionId == QLatin1String("dissolve")) {
@@ -643,10 +682,12 @@ int TimelineController::isOnCut(int cid) const
     return m_model->getTrackById_const(tid)->isOnCut(cid);
 }
 
-int TimelineController::insertComposition(int tid, int position, const QString &transitionId, bool logUndo)
+int TimelineController::insertComposition(int tid, int position, QString transitionId, bool logUndo, int duration)
 {
     int id;
-    int duration = pCore->getDurationFromString(KdenliveSettings::transition_duration());
+    if (duration == -1) {
+        duration = pCore->getDurationFromString(KdenliveSettings::transition_duration());
+    }
     // Check if composition should be reversed (top clip at beginning, bottom at end)
     int a_track = m_model->getPreviousVideoTrackPos(tid);
     int topClip = m_model->getTrackById_const(tid)->getClipByPosition(position);
@@ -666,8 +707,15 @@ int TimelineController::insertComposition(int tid, int position, const QString &
         }
     }
     std::unique_ptr<Mlt::Properties> props(nullptr);
-    if (reverse) {
+    if (TransitionsRepository::get()->isLuma(transitionId)) {
         props = std::make_unique<Mlt::Properties>();
+        props->set("resource", transitionId.toUtf8().constData());
+        transitionId = QStringLiteral("dissolve");
+    }
+    if (reverse) {
+        if (props == nullptr) {
+            props = std::make_unique<Mlt::Properties>();
+        }
         if (transitionId == QLatin1String("dissolve")) {
             props->set("reverse", 1);
         } else if (transitionId == QLatin1String("composite")) {
@@ -1168,6 +1216,10 @@ void TimelineController::setInPoint(bool ripple)
             int size = start + m_model->getItemPlaytime(id) - cursorPos;
             requestResize(id, size);
             selectionFound = true;
+            if (ripple) {
+                // Ripple op moves the playhead
+                cursorPos = pCore->getMonitorPosition();
+            }
         }
     }
     if (!selectionFound) {
@@ -2103,19 +2155,61 @@ const QPoint TimelineController::getMousePosInTimeline() const
     return mousPosInWidget;
 }
 
+void TimelineController::warpCursor(const QPoint &pos)
+{
+    QCursor::setPos(pos);
+}
+
+void TimelineController::hideCursor(bool hide)
+{
+    if (hide) {
+        m_cursorHidden++;
+        QGuiApplication::setOverrideCursor(QCursor(Qt::BlankCursor));
+    } else if (m_cursorHidden > 0) {
+        m_cursorHidden--;
+        QGuiApplication::restoreOverrideCursor();
+    }
+}
+
 int TimelineController::getMousePos()
 {
-    QVariant returnedValue;
-    int posInWidget = m_timelineMouseOffset + getMousePosInTimeline().x();
+    return getMousePos(getMousePosInTimeline());
+}
+
+int TimelineController::getMousePos(const QPoint &pos)
+{
+    int posInWidget = m_timelineMouseOffset + pos.x();
     return posInWidget / m_scale;
 }
 
 int TimelineController::getMouseTrack()
 {
+    return getMouseTrack(getMousePosInTimeline());
+}
+
+int TimelineController::getMouseTrack(const QPoint &pos)
+{
     QVariant returnedValue;
-    int posInWidget = getMousePosInTimeline().y();
+    int posInWidget = pos.y();
     QMetaObject::invokeMethod(m_root, "getMouseTrackFromPos", Qt::DirectConnection, Q_RETURN_ARG(QVariant, returnedValue), Q_ARG(QVariant, posInWidget));
     return returnedValue.toInt();
+}
+
+int TimelineController::getFreeSpace(int tid, int position)
+{
+    if (tid == -1) {
+        tid = m_activeTrack;
+    }
+    if (position == -1) {
+        position = pCore->getMonitorPosition();
+    }
+    if (tid > -1 && m_model->isTrack(tid)) {
+        int blankEnd = m_model->getTrackById_const(tid)->getBlankEnd(position);
+        if (blankEnd != INT_MAX) {
+            return blankEnd - position + 1;
+        }
+    }
+    return -1;
 }
 
 bool TimelineController::positionIsInItem(int id)
@@ -2618,7 +2712,7 @@ bool TimelineController::requestStartTrimmingMode(int mainClipId, bool addToSele
 void TimelineController::requestEndTrimmingMode()
 {
     if (pCore->monitorManager()->isTrimming()) {
-        pCore->monitorManager()->projectMonitor()->setProducer(m_model->uuid(), m_model->producer(), 0);
+        pCore->monitorManager()->projectMonitor()->setProducer(m_model->uuid(), m_model->producer(), -1);
         pCore->monitorManager()->projectMonitor()->slotSwitchTrimming(false);
     }
 }
@@ -2880,6 +2974,21 @@ void TimelineController::invalidateTrack(int tid)
     }
 }
 
+void TimelineController::invalidateMix(ObjectId owner)
+{
+    if (!m_model->hasTimelinePreview() || !m_model->isClip(owner.itemId)) {
+        return;
+    }
+    const int tid = m_model->getItemTrackId(owner.itemId);
+    if (tid == -1 || m_model->getTrackById_const(tid)->isAudioTrack()) {
+        return;
+    }
+    std::pair<MixInfo, MixInfo> mixData = m_model->getTrackById_const(tid)->getMixInfo(owner.itemId);
+    int start = mixData.first.secondClipInOut.first;
+    int end = mixData.first.firstClipInOut.second;
+    m_model->previewManager()->invalidatePreview(start, end);
+}
+
 void TimelineController::remapItemTime(int clipId)
 {
     if (clipId == -1) {
@@ -2907,50 +3016,172 @@ void TimelineController::remapItemTime(int clipId)
 
 void TimelineController::changeItemSpeed(int clipId, double speed)
 {
-    /*if (clipId == -1) {
-        clipId = getMainSelectedItem(false, true);
-    }*/
+    Fun undo = []() { return true; };
+    Fun redo = []() { return true; };
+    std::unordered_set<int> sel = {};
     if (clipId == -1) {
-        clipId = getMainSelectedClip();
+        sel = m_model->getCurrentSelection();
     }
-    if (clipId == -1) {
+    else{
+        if (m_model->isClip(clipId)) {
+            sel = {clipId};
+        }
+        else {
+            pCore->displayMessage(i18n("No item to edit"), ErrorMessage, 500);
+            return;
+        }
+    }
+    if (sel.empty()) {
         pCore->displayMessage(i18n("No item to edit"), ErrorMessage, 500);
         return;
     }
-    bool pitchCompensate = m_model->m_allClips[clipId]->getIntProperty(QStringLiteral("warp_pitch"));
-    if (qFuzzyCompare(speed, -1)) {
-        speed = 100 * m_model->getClipSpeed(clipId);
-        int duration = m_model->getItemPlaytime(clipId);
-        // this is the max speed so that the clip is at least one frame long
-        double maxSpeed = duration * qAbs(speed);
-        // this is the min speed so that the clip doesn't bump into the next one on track
-        double minSpeed = duration * qAbs(speed) / (duration + double(m_model->getBlankSizeNearClip(clipId, true)));
-
-        // if there is a split partner, we must also take it into account
-        int partner = m_model->getClipSplitPartner(clipId);
-        if (partner != -1) {
-            double duration2 = m_model->getItemPlaytime(partner);
-            double maxSpeed2 = 100. * duration2 * qAbs(m_model->getClipSpeed(partner));
-            double minSpeed2 = 100. * duration2 * qAbs(m_model->getClipSpeed(partner)) / (duration2 + double(m_model->getBlankSizeNearClip(partner, true)));
-            minSpeed = std::max(minSpeed, minSpeed2);
-            maxSpeed = std::min(maxSpeed, maxSpeed2);
+    else {
+        for (int i : sel) {
+            if (!m_model->isClip(i)) {
+                pCore->displayMessage(i18n("Cannot change speed of item(s)"), ErrorMessage, 500);
+                return;
+            }
         }
-        std::shared_ptr<ProjectClip> binClip = pCore->projectItemModel()->getClipByBinID(getClipBinId(clipId));
-        QScopedPointer<SpeedDialog> d(
-            new SpeedDialog(QApplication::activeWindow(), std::abs(speed), duration, minSpeed, maxSpeed, speed < 0, pitchCompensate, binClip->clipType()));
-        if (d->exec() != QDialog::Accepted) {
-            Q_EMIT regainFocus();
+    }
+
+    bool isSingleOrPartnerClip = false;
+    bool pitchCompensate = false;
+    int duration = 0;
+    if (sel.size() > 2) {
+        speed = 100.;
+    }
+    else {
+        int mainClipId = *sel.begin();
+        if(sel.size() == 2) {
+            mainClipId = getMainSelectedClip();
+            int partnerId = m_model->m_groups->getSplitPartner(mainClipId);
+            if (partnerId != -1 && sel.find(partnerId) != sel.end()) {
+                isSingleOrPartnerClip = true;
+            }
+        }
+        else {
+            isSingleOrPartnerClip = true;
+        }
+        if (isSingleOrPartnerClip) {
+            duration = m_model->getItemPlaytime(mainClipId);
+            pitchCompensate = m_model->m_allClips[mainClipId]->getIntProperty(QStringLiteral("warp_pitch"));
+            // single or partner clip selected and speed is provided by argument, if not provided get it from mainClip
+            if (!qFuzzyCompare(speed, -1)) {
+                qDebug() << "Requesting speed " << speed << " for clip " << mainClipId;
+                bool res = m_model->requestClipTimeWarp(mainClipId, speed, pitchCompensate, true);
+                if (res) {
+                    updateClipActions();
+                }
+                return;
+            }
+            else {
+                speed = 100. * m_model->getClipSpeed(mainClipId);
+            }
+        }
+        else {
+            speed = 100.;
+        }
+    }
+    double minSpeed = 0;
+    double maxSpeed = double(std::numeric_limits<int>::max());
+    bool isTimeLineOrPlaylistClip = false;
+    bool haveFirstClipStats = false;
+    double firstSpeed = 0.;
+    int firstOriginalDuration = 0;
+    int firstDuration = 0;
+    bool firstPitchCompensate = false;
+    bool isCommonSpeed = true;
+    bool isCommonPitchCompensate = true;
+    bool isCommonOriginalDuration = true;
+    bool isCommonDuration = true;
+    for (int cid : sel) {
+        double clipDuration = m_model->getItemPlaytime(cid);
+        double clipSpeed = 100. * m_model->getClipSpeed(cid);
+        bool clipPitchCompensate = m_model->m_allClips[cid]->getIntProperty(QStringLiteral("warp_pitch"));
+        int clipOriginalDuration = int(clipDuration * qAbs(clipSpeed) / 100.0);
+        if (!haveFirstClipStats) {
+            firstSpeed = clipSpeed;
+            firstOriginalDuration = clipOriginalDuration;
+            firstDuration = clipDuration;
+            firstPitchCompensate = clipPitchCompensate;
+            haveFirstClipStats = true;
+        } else {
+            if (isCommonSpeed && !qFuzzyCompare(firstSpeed, clipSpeed)) {
+                isCommonSpeed = false;
+            }
+            if (isCommonOriginalDuration && firstOriginalDuration != clipOriginalDuration) {
+                isCommonOriginalDuration = false;
+            }
+            if (isCommonDuration && clipDuration != firstDuration) {
+                isCommonDuration = false;
+            }
+            if (isCommonPitchCompensate && firstPitchCompensate != clipPitchCompensate) {
+                isCommonPitchCompensate = false;
+            }
+        }
+        // this is the max speed so that the clip is at least one frame long
+        maxSpeed = std::min(maxSpeed, clipDuration * qAbs(clipSpeed));
+        // this is the min speed so that the clip doesn't bump into the next one on track
+        minSpeed = std::max(minSpeed, (clipDuration * qAbs(clipSpeed)) / (clipDuration + double(m_model->getBlankSizeNearClip(cid, true))));
+        if (!isTimeLineOrPlaylistClip) {
+            const auto binClip = pCore->projectItemModel()->getClipByBinID(getClipBinId(cid));
+            if (binClip != nullptr) {
+                ClipType::ProducerType type = binClip->clipType();
+                if (type == ClipType::Timeline || type == ClipType::Playlist) {
+                    isTimeLineOrPlaylistClip = true;
+                }
+            }
+        }
+    }
+    // if multiple clips are selected and they have the same speed and pitch compensate, then use that value in the dialog,
+    // otherwise use default values (100 for speed and false for pitch compensate)
+    if (!isSingleOrPartnerClip) {
+        if (isCommonSpeed) {
+            speed = firstSpeed;
+            if (isCommonDuration) {
+                duration = firstDuration;
+            }
+            else {
+                duration = 0; // don't show duration in dialog
+            }
+        }
+        else {
+            speed = 100.;
+            if (isCommonOriginalDuration) {
+                duration = firstOriginalDuration;
+            }
+            else {
+                duration = 0; // don't show duration in dialog
+            }
+        }
+        if (isCommonPitchCompensate) {
+            pitchCompensate = firstPitchCompensate;
+        }
+    }
+    qDebug() << "Requesting dialog with speed " << speed << " min " << minSpeed << " and max " << maxSpeed;
+    QScopedPointer<SpeedDialog> d(
+        new SpeedDialog(QApplication::activeWindow(), std::abs(speed), duration, minSpeed, maxSpeed, speed < 0, pitchCompensate, isTimeLineOrPlaylistClip, isSingleOrPartnerClip)
+    );
+    if (d->exec() != QDialog::Accepted) {
+        Q_EMIT regainFocus();
+        return;
+    }
+    Q_EMIT regainFocus();
+    speed = d->getValue();
+    pitchCompensate = d->getPitchCompensate();
+    for (int cid : sel) {
+        qDebug() << "Requesting speed " << speed << " for clip " << cid << "from dialog";
+    
+        bool res = m_model->requestClipTimeWarp(cid, speed/100.0, pitchCompensate, true, undo, redo);
+        if (!res) {
+            undo();
+            pCore->displayMessage(i18n("Cannot change speed of item(s)"), ErrorMessage, 500);
             return;
         }
-        Q_EMIT regainFocus();
-        speed = d->getValue();
-        pitchCompensate = d->getPitchCompensate();
-        qDebug() << "requesting speed " << speed;
     }
-    bool res = m_model->requestClipTimeWarp(clipId, speed, pitchCompensate, true);
-    if (res) {
-        updateClipActions();
-    }
+    pCore->pushUndo(undo, redo, i18n(isSingleOrPartnerClip ? "Change clip speed" : "Change clips speed"));
+
+    updateClipActions();
 }
 
 void TimelineController::switchCompositing(bool enable)
@@ -3324,13 +3555,13 @@ void TimelineController::switchEnableState(std::unordered_set<int> selection)
     TimelineFunctions::switchEnableState(m_model, selection);
 }
 
-void TimelineController::addCompositionToClip(const QString &assetId, int clipId, int offset)
+int TimelineController::addCompositionToClip(const QString &assetId, int clipId, int offset)
 {
     if (clipId == -1) {
         clipId = getMainSelectedClip();
         if (clipId == -1) {
             pCore->displayMessage(i18n("No clip selected"), ErrorMessage, 500);
-            return;
+            return -1;
         }
     }
     if (offset == -1) {
@@ -3342,7 +3573,7 @@ void TimelineController::addCompositionToClip(const QString &assetId, int clipId
         QStringList compositions = KdenliveSettings::favorite_transitions();
         if (compositions.isEmpty()) {
             pCore->displayMessage(i18n("Select a favorite composition"), ErrorMessage, 500);
-            return;
+            return -1;
         }
         compoId = insertNewComposition(track, clipId, offset, compositions.first(), true);
     } else {
@@ -3351,6 +3582,7 @@ void TimelineController::addCompositionToClip(const QString &assetId, int clipId
     if (compoId > 0) {
         m_model->requestSetSelection({compoId});
     }
+    return compoId;
 }
 
 void TimelineController::setEffectsEnabled(int clipId, bool enabled)
@@ -3737,7 +3969,7 @@ bool TimelineController::hasVideoTarget() const
 
 bool TimelineController::autoScroll() const
 {
-    return !pCore->monitorManager()->projectMonitor()->isPlaying() || KdenliveSettings::autoscroll();
+    return KdenliveSettings::autoscroll() || !pCore->monitorManager()->projectMonitor()->isPlaying();
 }
 
 void TimelineController::resetTrackHeight()
@@ -3950,7 +4182,7 @@ void TimelineController::focusTimelineSequence(int id)
         Fun local_redo = [uuid, binId = binClip->binId(), sequencePos]() { return pCore->projectManager()->openTimeline(binId, -1, uuid, sequencePos); };
         if (local_redo()) {
             Fun local_undo = [uuid]() {
-                if (pCore->projectManager()->closeTimeline(uuid)) {
+                if (pCore->projectManager()->closeTimeline(uuid, false, false)) {
                     pCore->window()->closeTimelineTab(uuid, false);
                 }
                 return true;

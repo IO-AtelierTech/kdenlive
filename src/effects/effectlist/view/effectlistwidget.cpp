@@ -7,6 +7,7 @@
 #include "../model/effectfilter.hpp"
 #include "../model/effecttreemodel.hpp"
 #include "assets/assetlist/view/asseticonprovider.hpp"
+#include "utils/uiutils.h"
 
 #include <KActionCategory>
 #include <KIO/FileCopyJob>
@@ -24,6 +25,8 @@
 #include <QTextEdit>
 
 #include <memory>
+#include <qsplitter.h>
+#include <qstackedwidget.h>
 
 EffectListWidget::EffectListWidget(QAction *includeList, QAction *tenBit, QWidget *parent)
     : AssetListWidget(true, includeList, tenBit, parent)
@@ -44,9 +47,44 @@ EffectListWidget::EffectListWidget(QAction *includeList, QAction *tenBit, QWidge
     m_effectsTree->header()->setStretchLastSection(true);
     QItemSelectionModel *sel = m_effectsTree->selectionModel();
     connect(sel, &QItemSelectionModel::currentChanged, this, &AssetListWidget::updateAssetInfo);
+
+    if (!KdenliveSettings::showEffectsInfo()) {
+        m_viewSplitter->setSizes({50, 0});
+    } else {
+        const QByteArray restoreData = KdenliveSettings::effectsInfoHeight().toLatin1();
+        if (restoreData.isEmpty()) {
+            m_viewSplitter->setSizes({50, 20});
+            const QByteArray splitterData = m_viewSplitter->saveState();
+            KdenliveSettings::setEffectsInfoHeight(QString::fromLatin1(splitterData));
+        } else {
+            // Use a single-shot timer to restore the state
+            QTimer::singleShot(0, this, [this, restoreData]() { m_viewSplitter->restoreState(restoreData); });
+        }
+    }
+    connect(m_viewSplitter, &QSplitter::splitterMoved, this, [this]() {
+        const QByteArray splitterData = m_viewSplitter->saveState();
+        KdenliveSettings::setEffectsInfoHeight(QString::fromLatin1(splitterData));
+    });
 }
 
 EffectListWidget::~EffectListWidget() {}
+
+void EffectListWidget::switchSplitter(bool enable)
+{
+    KdenliveSettings::setShowEffectsInfo(enable);
+    if (enable) {
+        const QByteArray restoreData = KdenliveSettings::effectsInfoHeight().toLatin1();
+        if (restoreData.isEmpty()) {
+            m_viewSplitter->setSizes({50, 20});
+            const QByteArray saveData = m_viewSplitter->saveState();
+            KdenliveSettings::setEffectsInfoHeight(QString::fromLatin1(saveData));
+        } else {
+            m_viewSplitter->restoreState(restoreData);
+        }
+    } else {
+        m_viewSplitter->setSizes({50, 0});
+    }
+}
 
 void EffectListWidget::setFilterType(const QString &type)
 {
@@ -137,7 +175,7 @@ void EffectListWidget::exportCustomEffect(const QModelIndex &index)
     QUrl source = QUrl::fromLocalFile(EffectsRepository::get()->getCustomPath(assetId));
     startFolder.append(source.fileName());
 
-    QString filename = QFileDialog::getSaveFileName(this, i18nc("@title:window", "Export Custom Effect"), startFolder, filter);
+    QString filename = UiUtils::getSaveFileName(this, i18nc("@title:window", "Export Custom Effect"), startFolder, filter, QStringLiteral(".xml"));
     QUrl target = QUrl::fromLocalFile(filename);
 
     if (source.isValid() && target.isValid()) {

@@ -233,6 +233,10 @@ public:
     /** @brief Mark an item as invalid for timeline preview */
     void invalidateItem(ObjectId itemId);
     void invalidateRange(QPair<int, int> range);
+    /** @brief Mark an item audio as invalid for timeline preview */
+    void invalidateAudio(ObjectId itemId);
+    /** @brief Mark an audio range as invalid for timeline preview */
+    void invalidateAudioRange(const QUuid &uuid, int in, int out);
     void prepareShutdown();
     void finishShutdown();
     /** the keyframe model changed (effect added, deleted, active effect changed), inform timeline */
@@ -374,8 +378,10 @@ public:
     void updateHideBarsTimer(bool inhibit);
     /** @brief This is the producer that serves as a placeholder while a clip is being loaded. It is created in Core at startup */
     std::unique_ptr<Mlt::Producer> mediaUnavailable;
-    /** Returns true if the project uses a vertical profile */
+    /** @brief Returns true if the project uses a vertical profile */
     bool isVertical() const;
+    /** @brief Returns a list of luma files compatible with current project profile */
+    const QStringList getLumasForProfile();
 
 private:
     explicit Core(LinuxPackageType packageType, bool debugMode = false);
@@ -466,7 +472,7 @@ public Q_SLOTS:
     /** @brief Stop monitoring audio (without affecting the track header record control. */
     void setAudioMonitoring(bool);
     /** @brief Start audio recording (after countdown). */
-    void startRecording(bool showCountdown = false);
+    void startRecording(bool allowCountDown);
     /** @brief Show or hide track head audio rec controls. */
     void monitorAudio(int tid, bool monitor);
     /** @brief Open a documentation link, showing a warning box first */
@@ -489,6 +495,7 @@ Q_SIGNALS:
     void showConfigDialog(Kdenlive::ConfigPage, int);
     void finalizeRecording(const QUuid uuid, const QString &captureFile);
     void autoScrollChanged();
+    void centeredPlayheadChanged();
     /** @brief Update the message about the current loading progress */
     void loadingMessageNewStage(const QString &message, int max = -1);
     /** @brief Increase the progress of the loading message by 1 */

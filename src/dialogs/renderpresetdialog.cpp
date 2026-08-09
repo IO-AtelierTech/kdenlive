@@ -39,6 +39,7 @@ RenderPresetDialog::RenderPresetDialog(QWidget *parent, RenderPresetModel *prese
     if (preset) {
         m_manualPreset = preset->isManual();
     }
+    m_percentBasedAudioCodecs = {QStringLiteral("aac"), QStringLiteral("vorbis"), QStringLiteral("vorbis"), QStringLiteral("libmp3lame")};
     m_uiParams.append({QStringLiteral("f"),
                        QStringLiteral("acodec"),
                        QStringLiteral("vcodec"),
@@ -187,7 +188,10 @@ RenderPresetDialog::RenderPresetDialog(QWidget *parent, RenderPresetModel *prese
         slotUpdateParams();
     });
 
-    groupName->addItems(RenderPresetRepository::get()->groupNames());
+    QMap<QString, QString> categories = RenderPresetRepository::get()->getAllCategories();
+    for (auto i = categories.cbegin(), end = categories.cend(); i != end; ++i) {
+        groupName->addItem(i.value(), i.key());
+    }
 
     std::unique_ptr<ProfileModel> &projectProfile = pCore->getCurrentProfile();
     int parNum = projectProfile->sample_aspect_num();
@@ -205,7 +209,10 @@ RenderPresetDialog::RenderPresetDialog(QWidget *parent, RenderPresetModel *prese
         m_manualPreset = true;
     });
     if (preset) {
-        groupName->setCurrentText(preset->groupName());
+        int ix = groupName->findData(preset->groupId());
+        if (ix > -1) {
+            groupName->setCurrentIndex(ix);
+        }
         if (mode != Mode::New) {
             preset_name->setText(preset->name());
         }
@@ -384,7 +391,11 @@ RenderPresetDialog::RenderPresetDialog(QWidget *parent, RenderPresetModel *prese
             if (aqParam.contains(QStringLiteral("%audioquality"))) {
                 aQuality->setValue(preset->defaultAQuality().toInt());
             } else {
-                aQuality->setValue(aqParam.toInt());
+                if (aqParam.isEmpty()) {
+                    aQuality->setValue(50);
+                } else {
+                    aQuality->setValue(aqParam.toInt());
+                }
             }
             QString abParam = preset->getParam(QStringLiteral("ab"));
             if (abParam.contains(QStringLiteral("%audiobitrate"))) {
@@ -414,7 +425,10 @@ RenderPresetDialog::RenderPresetDialog(QWidget *parent, RenderPresetModel *prese
     setPixelAspectRatio(parNum, parDen);
 
     if (groupName->currentText().isEmpty()) {
-        groupName->setCurrentText(i18nc("Group Name", "Custom"));
+        int ix = groupName->findData(QLatin1String("custom"));
+        if (ix > 0) {
+            groupName->setCurrentIndex(ix);
+        }
     }
 
     if (mode == Mode::Edit) {
@@ -433,9 +447,9 @@ RenderPresetDialog::RenderPresetDialog(QWidget *parent, RenderPresetModel *prese
             KMessageBox::error(this, i18n("The preset name can't be empty"));
             return;
         }
-        QString newGroupName = groupName->currentText().simplified();
+        QString newGroupName = groupName->currentData().toString();
         if (newGroupName.isEmpty()) {
-            newGroupName = i18nc("Group Name", "Custom");
+            newGroupName = QStringLiteral("custom");
         }
         QString speeds_list_str = speeds_list->toPlainText().replace('\n', ';').simplified();
 
@@ -445,10 +459,15 @@ RenderPresetDialog::RenderPresetDialog(QWidget *parent, RenderPresetModel *prese
             qualities_str = preset->videoQualities().join(',');
         }
 
+        double audioQuality = aQuality->value();
+        if (m_percentBasedAudioCodecs.contains(aCodecCombo->currentText())) {
+            audioQuality = getAudioQualityForCodec(audioQuality, aCodecCombo->currentText());
+        }
+
         std::unique_ptr<RenderPresetModel> newPreset(
             new RenderPresetModel(newPresetName, newGroupName, parameters->toPlainText().simplified(), preset_extension->text().simplified(),
                                   QString::number(default_vbitrate->value()), QString::number(default_vquality->value()), qualities_str,
-                                  QString::number(aBitrate->value()), QString::number(aQuality->value()), speeds_list_str, m_manualPreset));
+                                  QString::number(aBitrate->value()), QString::number(audioQuality), speeds_list_str, m_manualPreset));
 
         m_saveName = RenderPresetRepository::get()->savePreset(newPreset.get(), mode == Mode::Edit);
         if ((mode == Mode::Edit) && !m_saveName.isEmpty() && (oldName != m_saveName)) {
@@ -589,6 +608,11 @@ void RenderPresetDialog::slotUpdateParams()
         return;
     }
     QStringList params;
+    if (m_percentBasedAudioCodecs.contains(aCodecCombo->currentText())) {
+        aQuality->setSuffix(QStringLiteral("%"));
+    } else {
+        aQuality->setSuffix(QString());
+    }
     QString vcodec = vCodecCombo->currentText();
     params.append(QStringLiteral("f=%1").arg(formatCombo->currentText()));
     // video tab
@@ -792,6 +816,14 @@ void RenderPresetDialog::slotUpdateParams()
     QString acodec = aCodecCombo->currentText();
     params.append(QStringLiteral("acodec=%1").arg(acodec));
 
+    if (aRateControlCombo->currentIndex() == RenderPresetParams::RateControl::Quality && m_percentBasedAudioCodecs.contains(aCodecCombo->currentText())) {
+        double audioQuality = aQuality->value();
+        audioQuality = getAudioQualityForCodec(audioQuality, acodec);
+        aq_label->setText(QStringLiteral("aq=%1").arg(audioQuality));
+    } else {
+        aq_label->clear();
+    }
+
     if (cChannels->isChecked() && audioChannels->currentData().toInt() > 0) {
         params.append(QStringLiteral("channels=%1").arg(audioChannels->currentData().toInt()));
     }
@@ -882,6 +914,24 @@ void RenderPresetDialog::setPixelAspectRatio(int num, int den)
     }
     parCombo->setCurrentIndex(ix);
     parCombo->blockSignals(false);
+}
+
+double RenderPresetDialog::getAudioQualityForCodec(double audioQuality, const QString &acodec)
+{
+    if (acodec == QStringLiteral("aac")) {
+        // aac audio quality is between 0.1 and 2, we convert the percentage to this range.
+        audioQuality = 0.1 + 1.9 * audioQuality / 100;
+    } else if (acodec == QStringLiteral("vorbis")) {
+        // vorbis audio quality is between 0 and 10, we convert the percentage to this range.
+        audioQuality = qRound(audioQuality / 10);
+    } else if (acodec == QStringLiteral("opus")) {
+        // vorbis audio quality is between 0 and 500, we convert the percentage to this range.
+        audioQuality = 5 * audioQuality;
+    } else if (acodec == QStringLiteral("libmp3lame")) {
+        // vorbis audio quality is between 9 (lowest) and 0 (best), we convert the percentage to this range.
+        audioQuality = qRound(9 - audioQuality * 0.09);
+    }
+    return audioQuality;
 }
 
 void RenderPresetDialog::updateDisplayAspectRatio()

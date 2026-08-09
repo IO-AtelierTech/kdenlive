@@ -34,6 +34,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "jobs/transcodetask.h"
 #include "kddocksetup.h"
 #include "kdenlivesettings.h"
+#include "keysequencehandler.h"
 #include "layouts/layoutmanagement.h"
 #include "library/librarywidget.h"
 #include "render/renderserver.h"
@@ -79,6 +80,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #endif
 
 #include <kddockwidgets/core/FloatingWindow.h>
+#include <kddockwidgets/core/MainWindow.h>
 
 #include <KAboutData>
 #include <KActionCollection>
@@ -154,7 +156,7 @@ MainWindow::MainWindow(QWidget *parent)
     auto flags = KDDockWidgets::Config::self().flags();
     flags |= KDDockWidgets::Config::Flag_HideTitleBarWhenTabsVisible;
     flags |= KDDockWidgets::Config::Flag_AllowReorderTabs;
-#if (KDDOCKWIDGETS_VERSION > KDDOCKWIDGETS_VERSION_CHECK(2, 3, 0))
+#if (KDDOCKWIDGETS_VERSION > QT_VERSION_CHECK(2, 3, 0))
     // The Flag_TitleBarShowAutoHide was added in 2.4.0
     flags |= KDDockWidgets::Config::Flag_TitleBarShowAutoHide;
 #endif
@@ -382,12 +384,20 @@ void MainWindow::init()
     connect(pCore->bin(), &Bin::updateTabName, m_timelineTabs, &TimelineTabs::renameTab);
     connect(m_timelineTabs, &TimelineTabs::showMixModel, this, [&](int cid, std::shared_ptr<AssetParameterModel> model, bool refreshOnly) {
         m_assetPanel->showMix(cid, model, refreshOnly);
+        if (m_effectStackDock->asDockWidgetController()->isTabbed() && m_effectStackDock->parent() == m_timelineDock->parent()) {
+            // Don't raise if tabbed with timeline
+            return;
+        }
         if (KdenliveSettings::raisepropsmixes()) {
             m_effectStackDock->setAsCurrentTab();
         }
     });
     connect(m_timelineTabs, &TimelineTabs::showTransitionModel, this, [&](int tid, std::shared_ptr<AssetParameterModel> model) {
         m_assetPanel->showTransition(tid, model);
+        if (m_effectStackDock->asDockWidgetController()->isTabbed() && m_effectStackDock->parent() == m_timelineDock->parent()) {
+            // Don't raise if tabbed with timeline
+            return;
+        }
         if (KdenliveSettings::raisepropscompositions()) {
             m_effectStackDock->setAsCurrentTab();
         }
@@ -399,6 +409,10 @@ void MainWindow::init()
                     return;
                 }
                 m_assetPanel->showEffectStack(clipName, model, size, showKeyframes);
+                if (m_effectStackDock->asDockWidgetController()->isTabbed() && m_effectStackDock->parent() == m_timelineDock->parent()) {
+                    // Don't raise if tabbed with timeline
+                    return;
+                }
                 bool isClip = model && model->getOwnerId().type == KdenliveObjectType::TimelineClip;
                 bool isTrack = model && model->getOwnerId().type == KdenliveObjectType::TimelineTrack;
                 if ((isClip && KdenliveSettings::raisepropsclips()) || (isTrack && KdenliveSettings::raisepropstracks())) {
@@ -462,13 +476,10 @@ void MainWindow::init()
     m_compositionList = new TransitionListWidget(includeList, tenBit, this);
     m_compositionListDock = addDock(i18n("Compositions"), QStringLiteral("transition_list"), m_compositionList, KDDockWidgets::Location_None, m_projectBinDock);
 
-    m_undoView = new QUndoView();
-    m_undoView->setCleanIcon(QIcon::fromTheme(QStringLiteral("edit-clear")));
-    m_undoView->setEmptyLabel(i18n("Clean"));
-    m_undoView->setGroup(m_commandStack);
-    QAction *clearStack = new QAction(QIcon::fromTheme(QStringLiteral("edit-clear-history")), i18n("Clear Undo History"), this);
-    m_undoView->addAction(clearStack);
-    connect(clearStack, &QAction::triggered, this, [this]() {
+    // Clear history action
+    QAction *cleanHistory = new QAction(QIcon::fromTheme(QStringLiteral("edit-clear-history")), i18n("Clear Undo History"), this);
+    addAction(QStringLiteral("clear_undo_history"), cleanHistory);
+    connect(cleanHistory, &QAction::triggered, this, [this]() {
         if (KMessageBox::warningContinueCancel(this, i18n("This will clear all undo history, you will not be able to undo any previous action.")) !=
             KMessageBox::Continue) {
             return;
@@ -478,17 +489,20 @@ void MainWindow::init()
             s->clear();
         }
     });
+
+    m_undoView = new QUndoView();
+    m_undoView->setCleanIcon(QIcon::fromTheme(QStringLiteral("edit-clear")));
+    m_undoView->setEmptyLabel(i18n("Clean"));
+    m_undoView->setGroup(m_commandStack);
+    m_undoView->addAction(cleanHistory);
+
     m_undoView->setContextMenuPolicy(Qt::ActionsContextMenu);
     m_undoViewDock = addDock(i18n("Undo History"), QStringLiteral("undo_history"), m_undoView, KDDockWidgets::Location_None, m_projectBinDock);
 
-    // Color and icon theme stuff
-    connect(m_commandStack, &QUndoGroup::cleanChanged, m_saveAction, &QAction::setDisabled);
-
-    QStringList stylesToHide = {
-        QStringLiteral("windowsvista"), // recoloring does not work well
-        QStringLiteral("Windows"),
-        // QStringLiteral("macintosh")
-    };
+    connect(m_commandStack, &QUndoGroup::cleanChanged, [this, cleanHistory](bool isClean) {
+        m_saveAction->setDisabled(isClean);
+        cleanHistory->setDisabled(isClean);
+    });
 
     // Switch title bars
     auto switchAction = new QAction(i18n("Show Title Bars"), this);
@@ -504,6 +518,12 @@ void MainWindow::init()
     QAction *stylesAction = KStyleManager::createConfigureAction(this);
     // stylesAction->menu() is only available on non KDE platform
     if (stylesAction->menu()) {
+        // Color and icon theme stuff
+        const QStringList stylesToHide = {
+            QStringLiteral("windowsvista"), // recoloring does not work well
+            QStringLiteral("Windows"),
+            // QStringLiteral("macintosh")
+        };
         for (QAction *child : stylesAction->menu()->actions()) {
             if (stylesToHide.contains(child->data().toString(), Qt::CaseInsensitive)) {
                 child->setVisible(false);
@@ -612,7 +632,7 @@ void MainWindow::init()
     addAction(QStringLiteral("timeline_preview_button"), previewButtonAction);
 
     // Since not all widgets are added yet, don't use the Save flag now
-    setupGUI(KXmlGuiWindow::ToolBar | KXmlGuiWindow::StatusBar /*| KXmlGuiWindow::Save*/ | KXmlGuiWindow::Create);
+    setupGUI(KXmlGuiWindow::ToolBar | KXmlGuiWindow::StatusBar | KXmlGuiWindow::Create);
 
     // Only start saving config once all GUI setup is done.
     connect(pCore.get(), &Core::GUISetupDone, this, &MainWindow::finishUiSetup, Qt::DirectConnection);
@@ -804,7 +824,7 @@ void MainWindow::init()
     new JogManager(this);
 #endif
     m_timelineTabs->setTimelineMenu(compositionMenu, timelineMenu, guideMenu, timelineRulerMenu, actionCollection()->action(QStringLiteral("edit_clip_marker")),
-                                    timelineHeadersMenu, thumbsMenu, timelineSubtitleMenu);
+                                    timelineHeadersMenu, thumbsMenu, timelineSubtitleMenu, m_binWidgets.first()->addClipMenu());
     m_scopesManager->slotCheckActiveScopes();
     connect(qApp, &QGuiApplication::applicationStateChanged, this, [&](Qt::ApplicationState state) {
         if (state == Qt::ApplicationActive && getCurrentTimeline()) {
@@ -849,11 +869,22 @@ void MainWindow::init()
     if (!KdenliveSettings::showtitlebars()) {
         Q_EMIT pCore->hideBars(true);
     }
+
+    // fix for Bug 376053: intercept "Configure Toolbars" to prevent shortcut reset
+    QAction *tbAction = actionCollection()->action(KStandardAction::name(KStandardAction::ConfigureToolbars));
+    if (tbAction) {
+        // disconnect EVERYTHING currently connected to it
+        disconnect(tbAction, nullptr, nullptr, nullptr);
+
+        // connect to a custom slot
+        connect(tbAction, &QAction::triggered, this, &MainWindow::slotEditToolbars);
+    }
 }
 
 void MainWindow::finishUiSetup()
 {
     pCore->restoreLayout();
+    Q_EMIT pCore->closeSplash();
     setAutoSaveSettings();
     QObject::disconnect(pCore.get(), &Core::GUISetupDone, this, nullptr);
     // This should connect only after splash is done
@@ -1279,23 +1310,6 @@ void MainWindow::setupActions()
     addAction(QStringLiteral("zoom_audio_thumbs"),
               m_audioZoomCycle); // kept action name zoom_audio_thumbs for backwards compatibility before in/out/reset were introduced
 
-    auto tlsettings = new QMenu(this);
-    tlsettings->setIcon(QIcon::fromTheme(QStringLiteral("application-menu")));
-    tlsettings->addAction(m_compositeAction);
-    tlsettings->addSeparator();
-    tlsettings->addAction(mixedView);
-    tlsettings->addAction(splitView);
-    tlsettings->addAction(splitView2);
-
-    auto *timelineSett = new QToolButton(this);
-    timelineSett->setPopupMode(QToolButton::InstantPopup);
-    timelineSett->setMenu(tlsettings);
-    timelineSett->setIcon(QIcon::fromTheme(QStringLiteral("application-menu")));
-    auto *tlButtonAction = new QWidgetAction(this);
-    tlButtonAction->setDefaultWidget(timelineSett);
-    tlButtonAction->setText(i18n("Track menu"));
-    addAction(QStringLiteral("timeline_settings"), tlButtonAction);
-
     m_timeFormatButton = new KSelectAction(QStringLiteral("00:00:00:00 / 00:00:00:00"), this);
     m_timeFormatButton->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     m_timeFormatButton->addAction(i18n("hh:mm:ss:ff"));
@@ -1517,6 +1531,13 @@ void MainWindow::setupActions()
     m_buttonHideClipOverlays->setChecked(KdenliveSettings::showClipOverlays());
     connect(m_buttonHideClipOverlays, &QAction::triggered, this, &MainWindow::slotSwitchClipOverlays);
 
+    m_buttonMouseZoomOnPlayhead = new QAction(QIcon::fromTheme(QStringLiteral("zoom-original")), i18n("Mouse Zoom on Playhead"), this);
+    m_buttonMouseZoomOnPlayhead->setWhatsThis(xi18nc("@info:whatsthis", "Toggles the mouse zoom on playhead feature (default is Off)."));
+
+    m_buttonMouseZoomOnPlayhead->setCheckable(true);
+    m_buttonMouseZoomOnPlayhead->setChecked(KdenliveSettings::timelinemousezoomonplayhead());
+    connect(m_buttonMouseZoomOnPlayhead, &QAction::triggered, this, &MainWindow::slotMouseZoomOnPlayhead);
+
     m_buttonTimelineTags = new QAction(QIcon::fromTheme(QStringLiteral("tag")), i18n("Show Color Tags in Timeline"), this);
     m_buttonTimelineTags->setWhatsThis(xi18nc("@info:whatsthis", "Toggles the display of clip tags in the timeline (default is On)."));
 
@@ -1565,6 +1586,7 @@ void MainWindow::setupActions()
 
     toolbar->addWidget(m_trimLabel);
     toolbar->addSeparator();
+    toolbar->addAction(m_buttonMouseZoomOnPlayhead);
     toolbar->addAction(m_buttonTimelineTags);
     toolbar->addAction(m_buttonVideoThumbs);
     toolbar->addAction(audioThumbsButtonAction);
@@ -2124,6 +2146,8 @@ void MainWindow::setupActions()
               QIcon::fromTheme(QStringLiteral("bookmarks")), Qt::Key_G);
     addAction(QStringLiteral("delete_sequence_marker"), i18n("Delete Timeline Marker"), this, SLOT(slotDeleteGuide()),
               QIcon::fromTheme(QStringLiteral("bookmark-remove")));
+    addAction(QStringLiteral("delete_all_sequence_markers"), i18n("Delete All Timeline Markers"), this, SLOT(slotDeleteAllSequenceMarkers()),
+              QIcon::fromTheme(QStringLiteral("edit-delete")));
     addAction(QStringLiteral("edit_sequence_marker"), i18n("Edit Timeline Marker…"), this, SLOT(slotEditGuide()),
               QIcon::fromTheme(QStringLiteral("bookmark-edit")));
 
@@ -2131,7 +2155,7 @@ void MainWindow::setupActions()
     addAction(QStringLiteral("search_guide"), i18n("Search Marker…"), this, SLOT(slotSearchGuide()), QIcon::fromTheme(QStringLiteral("edit-find")));
 
     QAction *lockGuides =
-        addAction(QStringLiteral("lock_guides"), i18n("Timeline Markers Locked"), this, SLOT(slotLockGuides(bool)), QIcon::fromTheme(QStringLiteral("lock")));
+        addAction(QStringLiteral("lock_guides"), i18n("Lock Timeline Markers"), this, SLOT(slotLockGuides(bool)), QIcon::fromTheme(QStringLiteral("lock")));
     lockGuides->setCheckable(true);
     lockGuides->setChecked(KdenliveSettings::lockedGuides());
     lockGuides->setToolTip(i18n("Lock Timeline Markers"));
@@ -2192,6 +2216,26 @@ void MainWindow::setupActions()
     disableEffects->setData("disable_timeline_effects");
     disableEffects->setCheckable(true);
     disableEffects->setChecked(false);
+
+    // Timeline hamburger menu
+    auto tlsettings = new QMenu(this);
+    tlsettings->setIcon(QIcon::fromTheme(QStringLiteral("application-menu")));
+    tlsettings->addAction(m_compositeAction);
+    tlsettings->addAction(disableEffects);
+    tlsettings->addSeparator();
+    tlsettings->addAction(mixedView);
+    tlsettings->addAction(splitView);
+    tlsettings->addAction(splitView2);
+
+    auto *timelineSett = new QToolButton(this);
+    timelineSett->setPopupMode(QToolButton::InstantPopup);
+    timelineSett->setMenu(tlsettings);
+    timelineSett->setIcon(QIcon::fromTheme(QStringLiteral("application-menu")));
+    auto *tlButtonAction = new QWidgetAction(this);
+    tlButtonAction->setDefaultWidget(timelineSett);
+    tlButtonAction->setText(i18n("Track menu"));
+    addAction(QStringLiteral("timeline_settings"), tlButtonAction);
+    // end of new place for the TL hmbg menu
 
     addAction(QStringLiteral("switch_track_disabled"), i18n("Toggle Track Disabled"), pCore->projectManager(), SLOT(slotSwitchTrackDisabled()), QIcon(),
               Qt::SHIFT | Qt::Key_H, timelineActions);
@@ -2956,6 +3000,12 @@ void MainWindow::slotShowTimelineTags()
     getCurrentTimeline()->model()->_resetView();
 }
 
+void MainWindow::slotMouseZoomOnPlayhead()
+{
+    KdenliveSettings::setTimelinemousezoomonplayhead(!KdenliveSettings::timelinemousezoomonplayhead());
+    m_buttonMouseZoomOnPlayhead->setChecked(KdenliveSettings::timelinemousezoomonplayhead());
+}
+
 void MainWindow::slotDeleteItem()
 {
     if (QApplication::focusWidget() != nullptr) {
@@ -3048,6 +3098,16 @@ void MainWindow::slotDeleteAllClipMarkers()
         return;
     }
     bool ok = clip->getMarkerModel()->removeAllMarkers();
+    if (!ok) {
+        m_messageLabel->setMessage(i18n("An error occurred while deleting markers"), ErrorMessage);
+        return;
+    }
+}
+
+void MainWindow::slotDeleteAllSequenceMarkers()
+{
+    auto model = pCore->currentDoc()->getGuideModel(pCore->currentTimelineId());
+    bool ok = model->removeAllMarkers();
     if (!ok) {
         m_messageLabel->setMessage(i18n("An error occurred while deleting markers"), ErrorMessage);
         return;
@@ -3504,13 +3564,13 @@ void MainWindow::addEffect(const QString &effectId)
 
 void MainWindow::slotZoomIn(bool zoomOnMouse)
 {
-    slotSetZoom(m_zoomSlider->value() - 1, zoomOnMouse);
+    slotSetZoom(m_zoomSlider->value() - 1, KdenliveSettings::timelinemousezoomonplayhead() ? false : zoomOnMouse);
     slotShowZoomSliderToolTip();
 }
 
 void MainWindow::slotZoomOut(bool zoomOnMouse)
 {
-    slotSetZoom(m_zoomSlider->value() + 1, zoomOnMouse);
+    slotSetZoom(m_zoomSlider->value() + 1, KdenliveSettings::timelinemousezoomonplayhead() ? false : zoomOnMouse);
     slotShowZoomSliderToolTip();
 }
 
@@ -3778,6 +3838,12 @@ void MainWindow::slotCopy()
     while ((widget != nullptr) && widget != this) {
         if (widget == m_effectStackDock) {
             m_assetPanel->sendStandardCommand(KStandardAction::Copy);
+            return;
+        } else if (widget == m_effectList2 && m_effectList2->infoPanelIsFocused()) {
+            m_effectList2->processCopy();
+            return;
+        } else if (widget == m_compositionList && m_compositionList->infoPanelIsFocused()) {
+            m_compositionList->processCopy();
             return;
         }
         widget = widget->parentWidget();
@@ -4392,8 +4458,8 @@ void MainWindow::slotShutdown()
     QDBusConnectionInterface *interface = QDBusConnection::sessionBus().interface();
     // org.kde.Shutdown is DBus activatable, so we can't query for it running
     if (qgetenv("XDG_CURRENT_DESKTOP") == QLatin1String("KDE")) {
-        QDBusInterface kdeShutdown(QStringLiteral("org.kde.Shutdown"), QStringLiteral("/Shutdown"), QStringLiteral("org.kde.Shutdown"));
-        kdeShutdown.call(QStringLiteral("logoutAndShutdown"));
+        QDBusInterface kdeShutdown(QStringLiteral("org.kde.LogoutPrompt"), QStringLiteral("/LogoutPrompt"), QStringLiteral("org.kde.LogoutPrompt"));
+        kdeShutdown.call(QStringLiteral("promptShutDown"));
     } else if ((interface != nullptr) && interface->isServiceRegistered(QStringLiteral("org.gnome.SessionManager"))) {
         QDBusInterface smserver(QStringLiteral("org.gnome.SessionManager"), QStringLiteral("/org/gnome/SessionManager"),
                                 QStringLiteral("org.gnome.SessionManager"));
@@ -4516,10 +4582,13 @@ void MainWindow::triggerKey(QKeyEvent *ev)
     // So on keypress events we parse keys and check for shortcuts in all existing actions
     QKeySequence seq;
     // Remove the Num modifier or some shortcuts like "*" will not work
-    if (ev->modifiers() != Qt::KeypadModifier) {
-        seq = QKeySequence(ev->key() + static_cast<int>(ev->modifiers()));
+    auto mods = ev->modifiers() & ~Qt::KeypadModifier;
+    // Some shortcuts are translated, for example Shift+5 is equal to '%' in a swiss keyboard
+    // So we need to remove the Shift Modifier to match. Logic copied from KKeySequenceRecorder
+    if (KdenliveKeySequence::isShiftAsModifierAllowed(ev->key())) {
+        seq = QKeySequence(static_cast<int>(mods) + ev->key());
     } else {
-        seq = QKeySequence(ev->key());
+        seq = QKeySequence(static_cast<int>(mods & ~Qt::ShiftModifier) + ev->key());
     }
     QList<KActionCollection *> collections = KActionCollection::allCollections();
     for (int i = 0; i < collections.count(); ++i) {
@@ -4561,7 +4630,17 @@ KDDockWidgets::QtWidgets::DockWidget *MainWindow::addDock(const QString &title, 
     } else {
         guiActions = new KActionCategory(i18n("Interface"), actionCollection());
     }
-    guiActions->addAction(objectName, dock->toggleAction());
+    auto dockAction = dock->toggleAction();
+    connect(dockAction, &QAction::triggered, this, [dock](bool dockVisible) {
+        if (!dockVisible && !KdenliveSettings::showtitlebars()) {
+            // Hack: when titlebar is hidden and a standalone widget is hidden through its
+            // menu action, empty space is not automatically reused. So we hack around by
+            // showing widget again, then hiding
+            dock->open();
+            dock->close();
+        }
+    });
+    guiActions->addAction(objectName, dockAction);
     kdenliveCategoryMap.insert(QStringLiteral("interface"), guiActions);
     return dock;
 }
@@ -4588,13 +4667,17 @@ void MainWindow::slotUpdateMonitorOverlays(int id, int code)
     }
 }
 
-void MainWindow::raiseMonitor(bool clipMonitor)
+void MainWindow::raiseMonitor(bool clipMonitor, bool raise)
 {
     if (clipMonitor) {
-        m_clipMonitorDock->open();
+        if (raise) {
+            m_clipMonitorDock->open();
+        }
         m_clipMonitorDock->setAsCurrentTab();
     } else {
-        m_projectMonitorDock->open();
+        if (raise) {
+            m_projectMonitorDock->open();
+        }
         m_projectMonitorDock->setAsCurrentTab();
     }
 }
@@ -4755,9 +4838,9 @@ bool MainWindow::hasTimeline() const
     return m_timelineTabs != nullptr;
 }
 
-void MainWindow::closeTimelineTab(const QUuid uuid, bool onDeletion)
+void MainWindow::closeTimelineTab(const QUuid uuid, bool onDeletion, bool checkActiveClosed)
 {
-    m_timelineTabs->closeTimelineTab(uuid);
+    m_timelineTabs->closeTimelineTab(uuid, checkActiveClosed);
     if (onDeletion) {
         resetSubtitles(uuid);
     }
@@ -5590,6 +5673,12 @@ void MainWindow::disconnectTimeline(TimelineWidget *timeline, bool onClose)
     if (!onClose) {
         // Ensure the active timeline has an transparent black background for embedded compositing
         timeline->model()->makeTransparentBg(true);
+        if (!pCore->currentDoc()->loading) {
+            // Update audio thumb if necessary
+            const QUuid uuid = timeline->getUuid();
+            const QString binId = pCore->projectItemModel()->getSequenceId(uuid);
+            getBin()->rebuildAudioThumb(binId);
+        }
     }
     disconnect(timeline->controller(), &TimelineController::durationChanged, pCore->projectManager(), &ProjectManager::adjustProjectDuration);
     disconnect(m_projectMonitor, &Monitor::multitrackView, timeline->controller(), &TimelineController::slotMultitrackView);
@@ -5764,4 +5853,48 @@ QSize MainWindow::sizeHint() const
 {
     const QSize desktopSize = QGuiApplication::primaryScreen()->availableSize();
     return KXmlGuiWindow::sizeHint().expandedTo(desktopSize * 0.8);
+}
+
+void MainWindow::slotEditToolbars()
+{
+    // backup all current shortcuts
+    QMap<QString, QKeySequence> shortcutBackup;
+    for (auto *action : actionCollection()->actions()) {
+        if (!action->shortcut().isEmpty()) {
+            shortcutBackup.insert(action->objectName(), action->shortcut());
+        }
+    }
+
+    // open the standard KDE Toolbar Editor
+    KEditToolBar dlg(guiFactory(), this);
+
+    // connect dialog changes to Kdenlive's refresh/save function (Fixes visual toolbar updates)
+    connect(&dlg, &KEditToolBar::newToolBarConfig, this, &MainWindow::saveNewToolbarConfig);
+
+    dlg.exec();
+
+    // restore shortcuts
+    bool restorationHappened = false;
+
+    for (auto i = shortcutBackup.begin(); i != shortcutBackup.end(); ++i) {
+        QAction *action = actionCollection()->action(i.key());
+        if (action && action->shortcut() != i.value()) {
+            if (!i.value().isEmpty()) {
+                for (auto *otherAction : actionCollection()->actions()) {
+                    if (otherAction != action && otherAction->shortcut() == i.value()) {
+                        otherAction->setShortcut(QKeySequence());
+                    }
+                }
+            }
+            action->setShortcut(i.value());
+            actionCollection()->setShortcutsConfigurable(action, true);
+            restorationHappened = true;
+        }
+    }
+
+    // PERSISTENCE FIX: Force the action collection to write its current state (with our restored shortcuts)
+    // to the standard XML file immediately.
+    if (restorationHappened) {
+        actionCollection()->writeSettings();
+    }
 }

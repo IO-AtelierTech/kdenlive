@@ -18,6 +18,7 @@
 #include "project/projectmanager.h"
 #include "timeline2/model/clipmodel.hpp"
 #include "timeline2/model/timelineitemmodel.hpp"
+#include "utils/uiutils.h"
 
 #include <KLocalizedString>
 #include <KMessageBox>
@@ -56,8 +57,8 @@ void OtioExport::exportFile(const QString &fileName)
 
 void OtioExport::slotExport()
 {
-    QString fileName = QFileDialog::getSaveFileName(pCore->window(), i18n("OpenTimelineIO Export"), pCore->currentDoc()->projectDataFolder(),
-                                                    QStringLiteral("%1 (*.otio)").arg(i18n("OpenTimelineIO Project")));
+    QString fileName = UiUtils::getSaveFileName(pCore->window(), i18n("OpenTimelineIO Export"), pCore->currentDoc()->projectDataFolder(),
+                                                QStringLiteral("%1 (*.otio)").arg(i18n("OpenTimelineIO Project")), QStringLiteral(".otio"));
     if (fileName.isNull()) {
         return;
     }
@@ -80,12 +81,9 @@ void OtioExport::exportTimeline(const std::shared_ptr<TimelineItemModel> &timeli
 
     // Create the OTIO timeline.
     OTIO_NS::SerializableObject::Retainer<OTIO_NS::Timeline> otioTimeline(new OTIO_NS::Timeline);
-#if !defined(Q_OS_FREEBSD)
-    // TODO: https://invent.kde.org/multimedia/kdenlive/-/issues/1992
     OTIO_NS::AnyDictionary otioMetadata;
     otioMetadata["version"] = std::string(KDENLIVE_VERSION);
     otioTimeline->metadata()["kdenlive"] = otioMetadata;
-#endif
 
     // Export guides as OTIO markers.
     const double fps = projectFps();
@@ -202,12 +200,9 @@ void OtioExport::exportClip(const std::shared_ptr<TimelineItemModel> &timeline, 
             // standardized, so we use the "kdenlive" namespace/prefix to
             // indicate these values are specific to kdenlive.
             OTIO_NS::AnyDictionary otioParameters;
-#if !defined(Q_OS_FREEBSD)
-            // TODO: https://invent.kde.org/multimedia/kdenlive/-/issues/1992
             OTIO_NS::AnyDictionary parameters;
             parameters["color"] = QFileInfo(projectClip->getProducerProperty("resource")).fileName().toStdString();
             otioParameters["kdenlive"] = parameters;
-#endif
             otioMediaReference = new OTIO_NS::GeneratorReference(projectClip->name().toStdString(), "kdenlive:SolidColor", otioAvailableRange, otioParameters);
         }
     }
@@ -246,12 +241,11 @@ void OtioExport::exportMarker(const CommentedTime &marker, const OTIO_NS::TimeRa
     otioMarker->set_comment(marker.comment().toStdString());
     otioMarker->set_marked_range(otioRange);
     otioMarker->set_color(toOtioMarkerColor(marker.markerType()));
-#if !defined(Q_OS_FREEBSD)
-    // TODO: https://invent.kde.org/multimedia/kdenlive/-/issues/1992
+
     OTIO_NS::AnyDictionary otioMetadata;
     otioMetadata["type"] = static_cast<int64_t>(marker.markerType());
     otioMarker->metadata()["kdenlive"] = otioMetadata;
-#endif
+
     otioItem->markers().push_back(otioMarker);
 }
 

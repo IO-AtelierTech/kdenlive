@@ -155,7 +155,7 @@ public:
 private:
     enum ItemRole { NameRole = Qt::UserRole, DurationRole, UsageRole };
 
-    QTimeLine *m_timeLine;
+    QTimeLine *m_timeLine{nullptr};
     QAction *m_action{nullptr};
     QMutex m_locker;
 
@@ -231,8 +231,6 @@ public:
     size_t getClipDuration(int itemId) const;
     /** @brief Returns the frame size of a given clip. */
     QSize getFrameSize(int itemId) const;
-    /** @brief Returns the state of a given clip: AudioOnly, VideoOnly, Disabled (Disabled means it has audio and video capabilities */
-    std::pair<PlaylistState::ClipState, ClipType::ProducerType> getClipState(int itemId) const;
 
     /** @brief Add markers on clip \@param binId at \@param markersData with @comments text if given
         @param type Marker type (-1 to use default) */
@@ -283,6 +281,9 @@ public:
     void blockBin(bool block);
     void doMoveFolder(const QString &id, const QString &newParentId);
     void setupGeneratorMenu();
+    QMenu *addClipMenu() const;
+    void setReadyCallBack(const std::function<void(const QString &)> &cb);
+    void setSuggestedDuration(int duration);
     void clearMonitor();
 
     /** @brief Set focus to the Bin view. */
@@ -329,6 +330,10 @@ public:
     void saveZone(const QStringList &info, const QDir &dir);
     /** @brief A bin clip changed (its effects), invalidate preview */
     void invalidateClip(const QString &binId);
+    /** @brief A bin clip changed (its effects), invalidate audio preview */
+    void invalidateClipAudio(const QString &binId);
+    /** @brief Update sequence audio thumb if necessary */
+    void rebuildAudioThumb(const QString &binId);
     /** @brief Recreate missing proxies on document opening */
     void checkMissingProxies();
     /** @brief Save folder state (expanded or not) */
@@ -407,6 +412,14 @@ public:
     void expandAll();
     bool isMainBin() const;
     void buildPropertiesDock(KDDockWidgets::QtWidgets::DockWidget *parentDock);
+    const QString slotAddClipToProject(const QUrl &url);
+    /** @brief Save all sequence audio thumbnails to disk */
+    void saveSequenceAudioThumb();
+    /** @brief Generate or load all sequence audio thumbnails from disk */
+    void loadSequenceAudioThumb();
+
+public Q_SLOTS:
+    const QString slotUrlsDropped(const QList<QUrl> urls, const QModelIndex parent);
 
 private Q_SLOTS:
     void slotAddClip();
@@ -496,7 +509,6 @@ public Q_SLOTS:
     void slotStartFilterJob(/*const ItemInfo &info,*/ const QString &id, QMap<QString, QString> &filterParams, QMap<QString, QString> &consumerParams,
                             QMap<QString, QString> &extraParams);
     void slotItemDropped(const QStringList ids, const QModelIndex parent, bool dropFromSameSource);
-    const QString slotUrlsDropped(const QList<QUrl> urls, const QModelIndex parent);
     void slotEffectDropped(const QStringList &effectData, const QModelIndex &parent);
     void slotTagDropped(const QString &tag, const QModelIndex &parent);
     void slotItemEdited(const QModelIndex &, const QModelIndex &, const QVector<int> &);
@@ -519,7 +531,6 @@ public Q_SLOTS:
     void doDisplayMessage(const QString &text, KMessageWidget::MessageType type, const QString logInfo);
     /** @brief Select a clip in the Bin from its id. */
     void selectClipById(const QString &id, int frame = -1, const QPoint &zone = QPoint(), bool activateMonitor = true);
-    const QString slotAddClipToProject(const QUrl &url);
     void droppedUrls(const QList<QUrl> &urls, const QString &folderInfo = QString());
     /** @brief Adjust project profile to current clip. */
     void adjustProjectProfileToItem();
@@ -589,6 +600,7 @@ private:
     QSlider *m_slider;
     QIcon m_blankThumb;
     QMenu *m_menu{nullptr};
+    QMenu *m_folderContextMenu{nullptr};
     QAction *m_openAction{nullptr};
     QAction *m_editAction{nullptr};
     QAction *m_reloadAction{nullptr};
@@ -642,6 +654,8 @@ private:
     long m_processedAudio;
     /** @brief Indicates whether audio thumbnail creation is running. */
     QFuture<void> m_audioThumbsThread;
+    std::function<void(const QString &)> m_readyCallBack = [](const QString &) {};
+    int m_suggestedDuration{-1};
     QAction *addBinAction(const QString &name, const QString &text, const QIcon &icon, const QString &category = {});
     void setupAddClipAction(QMenu *addClipMenu, ClipType::ProducerType type, const QString &name, const QString &text, const QIcon &icon);
     /** @brief Get the QModelIndex value for an item in the Bin. */

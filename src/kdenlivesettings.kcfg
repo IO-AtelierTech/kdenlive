@@ -163,9 +163,22 @@
       <default>false</default>
     </entry>
 
-    <entry name="assetsInfoHeight" type="Double">
-      <label>Height of the info box.</label>
-      <default>0</default>
+    <entry name="effectsInfoHeight" type="String">
+      <label>Splitter data for height of the info box.</label>
+      <default></default>
+    </entry>
+    <entry name="showEffectsInfo" type="Bool">
+      <label>Shall we show the info box.</label>
+      <default>false</default>
+    </entry>
+
+    <entry name="transitionsInfoHeight" type="String">
+      <label>Splitter data for height of the info box.</label>
+      <default></default>
+    </entry>
+    <entry name="showTransitionsInfo" type="Bool">
+      <label>Shall we show the info box.</label>
+      <default>false</default>
     </entry>
 
     <entry name="disable_effect_parameters" type="Bool">
@@ -426,6 +439,10 @@
       <label>Auto scroll timeline while playing.</label>
       <default>true</default>
     </entry>
+    <entry name="centeredplayhead" type="Bool">
+      <label>Center timeline on playhead while playing or seeking.</label>
+      <default>false</default>
+    </entry>
 
     <entry name="jumptostart" type="Bool">
       <label>Jump to timeline start if playback is started on last frame in timeline.</label>
@@ -609,6 +626,10 @@
       <label>Play/pause monitor on click.</label>
       <default>true</default>
     </entry>
+    <entry name="mirrorMonitorOnFullscreen" type="Bool">
+      <label>Whether to mirror the monitor on fullscreen instead of moving it.</label>
+      <default>false</default>
+    </entry>
     <entry name="fullscreen_monitor" type="String">
       <label>Monitor used for fullscreen output.</label>
       <default></default>
@@ -775,6 +796,11 @@
       <default></default>
     </entry>
 
+    <entry name="defaultvideoapp" type="String">
+      <label>Default video editing application name.</label>
+      <default></default>
+    </entry>
+
     <entry name="nice_tasks" type="Bool">
       <label>Use lower CPU priority for proxy and transcode tasks</label>
       <default>true</default>
@@ -820,6 +846,11 @@
     <entry name="audiocapturesamplerate" type="Int">
       <label>Audio capture sample rate</label>
       <default>48000</default>
+    </entry>
+
+    <entry name="audiocapturesampleformat" type="Int">
+      <label>Audio capture sample format</label>
+      <default>2</default>
     </entry>
 
     <entry name="defaultcapture" type="Int">
@@ -1063,6 +1094,11 @@
     <entry name="tagsintimeline" type="Bool">
       <label>Show color tags in timeline.</label>
       <default>true</default>
+    </entry>
+
+    <entry name="timelinemousezoomonplayhead" type="Bool">
+      <label>Mouse zoom on timeline based on playhead position, not mouse position.</label>
+      <default>false</default>
     </entry>
 
     <entry name="transitionfollowcursor" type="Bool">
@@ -1384,6 +1420,14 @@
     <entry name="selected_effecttab" type="Int">
       <label>Last opened tab in effects list.</label>
       <default>0</default>
+    </entry>
+    <entry name="effectViewAsIcon" type="Bool">
+      <label>Show effects as icon list.</label>
+      <default>false</default>
+    </entry>
+    <entry name="transitionViewAsIcon" type="Bool">
+      <label>Show transitions as icon list.</label>
+      <default>false</default>
     </entry>
     </group>
   <group name="startup">
