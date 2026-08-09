@@ -302,18 +302,19 @@ jobs:
       # The KDE binary cache's libcupsimage.so.2 NEEDs libcrypt.so.2, but
       # Ubuntu 24.04 (noble) does not ship it (libcrypt1 only has .so.1), so
       # linuxdeploy cannot deploy it. Build libxcrypt (same 4.4.36 version as
-      # noble's libcrypt1) with autotools and pre-seed the lib into every
-      # location Craft may stage the appdir from.
+      # noble's libcrypt1) from the release tarball with the new ABI only
+      # (--disable-obsolete-api gives libcrypt.so.2) and pre-seed the lib
+      # into every location Craft may stage the appdir from.
       - name: Pre-seed libcrypt for linuxdeploy
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get install -y autoconf automake libtool gettext >/dev/null
-          git clone --depth 1 --branch v4.4.36 https://github.com/besser82/libxcrypt.git /tmp/libxcrypt
-          cd /tmp/libxcrypt
-          ./autogen.sh >/dev/null
-          ./configure --prefix=/tmp/libxcrypt/out >/dev/null
+          curl -sSL -o /tmp/libxcrypt.tar.xz \
+            "https://github.com/besser82/libxcrypt/releases/download/v4.4.36/libxcrypt-4.4.36.tar.xz"
+          tar -C /tmp -xf /tmp/libxcrypt.tar.xz
+          cd /tmp/libxcrypt-4.4.36
+          ./configure --prefix=/tmp/libxcrypt/out --disable-obsolete-api >/dev/null
           make -j2 >/dev/null
           make install >/dev/null
           lib=$(find /tmp/libxcrypt/out -name 'libcrypt.so.2*' -type f | head -1)
