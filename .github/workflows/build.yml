@@ -393,6 +393,7 @@ jobs:
       # Prepare release files
       # -----------------------------------------------------------------------
       - name: Prepare release files
+        shell: bash   # bash syntax; workflow default is pwsh
         run: |
           mkdir -p release/final
 
