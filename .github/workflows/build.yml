@@ -301,21 +301,27 @@ jobs:
       # -----------------------------------------------------------------------
       # The KDE binary cache's libcupsimage.so.2 NEEDs libcrypt.so.2, but
       # Ubuntu 24.04 (noble) does not ship it (libcrypt1 only has .so.1), so
-      # linuxdeploy cannot deploy it. Build libxcrypt and pre-seed the lib
-      # into every location Craft may stage the appdir from.
+      # linuxdeploy cannot deploy it. Build libxcrypt (same 4.4.36 version as
+      # noble's libcrypt1) with autotools and pre-seed the lib into every
+      # location Craft may stage the appdir from.
       - name: Pre-seed libcrypt for linuxdeploy
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
+          sudo apt-get install -y autoconf automake libtool gettext >/dev/null
+          git clone --depth 1 --branch v4.4.36 https://github.com/besser82/libxcrypt.git /tmp/libxcrypt
+          cd /tmp/libxcrypt
+          ./autogen.sh >/dev/null
+          ./configure --prefix=/tmp/libxcrypt/out >/dev/null
+          make -j2 >/dev/null
+          make install >/dev/null
+          lib=$(find /tmp/libxcrypt/out -name 'libcrypt.so.2*' -type f | head -1)
+          [ -n "$lib" ] || { echo "ERROR: libcrypt.so.2 build failed"; exit 1; }
+          echo "Built $lib"
           prefix="$HOME/craft/CraftMaster/linux-64-gcc"
           img=$(ls -d "$prefix/build/kde/kdemultimedia/kdenlive/image-RelWithDebInfo-"* | head -1)
           [ -n "$img" ] || { echo "ERROR: kdenlive image dir not found"; exit 1; }
-          git clone --depth 1 --branch v4.4.36 https://github.com/besser82/libxcrypt.git /tmp/libxcrypt >/dev/null 2>&1
-          cmake -S /tmp/libxcrypt -B /tmp/libxcrypt/build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF >/dev/null
-          cmake --build /tmp/libxcrypt/build -j2
-          lib=$(find /tmp/libxcrypt/build -name 'libcrypt.so.2*' -type f | head -1)
-          [ -n "$lib" ] || { echo "ERROR: libcrypt.so.2 build failed"; exit 1; }
           for dest in \
             "$img/usr/lib" \
             "$img/home/runner/craft/CraftMaster/linux-64-gcc/usr/lib" \
