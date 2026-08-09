@@ -313,6 +313,10 @@ jobs:
       # Run tests
       # -----------------------------------------------------------------------
       - name: Run tests
+        env:
+          # Headless runners have no X display; tests abort at startup with
+          # "qt.qpa.xcb: could not connect to display" otherwise.
+          QT_QPA_PLATFORM: offscreen
         run: |
           & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --test kde/kdemultimedia/kdenlive
         continue-on-error: true   # Don't fail build on test failures (for now)
