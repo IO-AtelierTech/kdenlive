@@ -314,11 +314,22 @@ jobs:
       # -----------------------------------------------------------------------
       - name: Run tests
         env:
-          # Headless runners have no X display; tests abort at startup with
+          # Windows runners have no X display; tests abort at startup with
           # "qt.qpa.xcb: could not connect to display" otherwise.
           QT_QPA_PLATFORM: offscreen
         run: |
           if ($IsLinux) {
+              # Linux: run under Xvfb + Mesa software GL (llvmpipe), like KDE's
+              # own CI. The offscreen platform has no GL contexts and the tests'
+              # window is null, which breaks the timeline preview render and
+              # swallows the kdenlive_render subprocess stderr.
+              sudo apt-get update -qq
+              sudo apt-get install -y -qq xvfb mesa-utils
+              Remove-Item Env:QT_QPA_PLATFORM -ErrorAction SilentlyContinue
+              $env:DISPLAY = ":99"
+              $env:LIBGL_ALWAYS_SOFTWARE = "1"
+              Start-Process Xvfb -ArgumentList ":99", "-screen", "0", "1280x1024x24" -NoNewWindow
+              Start-Sleep -Seconds 2
               # TestMain.cpp resolves the MLT repository from $CRAFT_ROOT
               # (<craft-root>/lib/mlt-7) and falls back to a NULL factory init
               # when it is unset, which crashes the MLT-based tests.
