@@ -152,7 +152,7 @@ public:
     /** @brief Update active track in multitrack view */
     void updateMultiTrackView(int tid);
     /** @brief Returns true if monitor is currently fullscreen */
-    bool monitorIsFullScreen() const;
+    bool monitorIsFullScreen(bool considerMirror = true) const;
     void reloadActiveStream();
     /** @brief Returns true if monitor is playing */
     bool isPlaying() const;
@@ -193,6 +193,8 @@ public:
     void updatePreviewMask();
     /** @brief Apply timecode display styling based on current active state */
     void applyTimecodeDisplayStyling();
+    /** @brief Audio thumbnail is outdated, inform view */
+    void markAudioDirty(bool dirty);
 
 protected:
     void mousePressEvent(QMouseEvent *event) override;
@@ -210,6 +212,12 @@ protected:
     void updateBgColor();
 
 private:
+    const QScreen *getScreenForFullscreen(bool *multipleScreens);
+
+    // Fullscreen mirror helpers
+    void createFullscreenMirror();
+    void destroyFullscreenMirror();
+
     std::shared_ptr<ProjectClip> m_controller;
     /** @brief The QQuickView that handles our monitor display (video and qml overlay) **/
     VideoWidget *m_glMonitor;
@@ -271,6 +279,10 @@ private:
     QMetaObject::Connection m_switchConnection;
     QMetaObject::Connection m_captureConnection;
 
+    // Fullscreen mirror window & widget.
+    QWidget *m_fullscreenWindow{nullptr};
+    VideoWidget *m_monitorMirror{nullptr};
+
     void adjustScrollBars(float horizontal, float vertical);
     void updateQmlDisplay(int currentOverlay);
     /** @brief Create temporary Mlt::Tractor holding a clip and it's effectless clone */
@@ -327,6 +339,8 @@ private Q_SLOTS:
     void addControlRect(double x, double y, double width, double height, bool extend);
     /** @brief Check if powermanagement sleep should be inhibited*/
     void updatePowerManagement();
+    /** @brief Trigger a rebuild of the audio thumbnail */
+    void rebuildAudio(int cid);
 
 public Q_SLOTS:
     void slotCreateRangeMarkerFromZone();
@@ -453,4 +467,5 @@ Q_SIGNALS:
     void disablePreviewMask();
     void sceneChanged(MonitorSceneType sceneType);
     void effectRotationChanged(double rotation);
+    void profileUpdated();
 };

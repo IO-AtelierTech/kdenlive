@@ -214,7 +214,7 @@ std::shared_ptr<ProjectClip> ProjectClip::construct(const QString &id, const QDo
 ProjectClip::~ProjectClip()
 {
     auto *doc = pCore->currentDoc();
-    if (doc && doc->closing) {
+    if (pCore->closing || (doc && doc->closing)) {
         for (auto &p : m_audioProducers) {
             m_effectStack->removeService(p.second);
         }
@@ -321,7 +321,7 @@ void ProjectClip::updateAudioThumbnail(bool cachedThumb)
         return;
     }
     m_audioThumbCreated = true;
-    if (!cachedThumb) {
+    if (!cachedThumb || m_clipType == ClipType::Timeline) {
         // Audio was just created
         updateTimelineClips({TimelineModel::ReloadAudioThumbRole});
     }
@@ -537,19 +537,6 @@ void ProjectClip::setThumbnail(const QImage &img, int in, int out, bool inCache)
         return;
     }
     QPixmap thumb = roundedPixmap(QPixmap::fromImage(img));
-    if (hasProxy() && !thumb.isNull()) {
-        // Overlay proxy icon
-        QPainter p(&thumb);
-        QColor c(220, 220, 10, 200);
-        QRect r(0, 0, int(thumb.height() / 2.5), int(thumb.height() / 2.5));
-        p.fillRect(r, c);
-        QFont font = p.font();
-        font.setPixelSize(r.height());
-        font.setBold(true);
-        p.setFont(font);
-        p.setPen(Qt::black);
-        p.drawText(r, Qt::AlignCenter, i18nc("@label The first letter of Proxy, used as abbreviation", "P"));
-    }
     m_thumbnail = QIcon(thumb);
     if (auto ptr = m_model.lock()) {
         std::static_pointer_cast<ProjectItemModel>(ptr)->onItemUpdated(std::static_pointer_cast<ProjectClip>(shared_from_this()),
@@ -557,6 +544,20 @@ void ProjectClip::setThumbnail(const QImage &img, int in, int out, bool inCache)
     }
     if (!inCache) {
         // Title clips always use the same thumb as bin, refresh
+        updateTimelineClips({TimelineModel::ClipThumbRole});
+    }
+    if (m_clipType == ClipType::AV || m_clipType == ClipType::Video) {
+        // Also update zone thumbs
+        int zonesCount = childCount();
+        if (zonesCount > 0) {
+            for (int i = 0; i < zonesCount; ++i) {
+                std::shared_ptr<AbstractProjectItem> subclip = std::static_pointer_cast<AbstractProjectItem>(child(i));
+                auto subClipItem = std::static_pointer_cast<ProjectSubClip>(subclip);
+                if (subClipItem) {
+                    subClipItem->reloadThumb();
+                }
+            }
+        }
         updateTimelineClips({TimelineModel::ClipThumbRole});
     }
 }
@@ -834,14 +835,14 @@ std::unique_ptr<Mlt::Producer> ProjectClip::getThumbProducer(const QUuid &)
         m_clipStatus == FileStatus::StatusMissing) {
         return nullptr;
     }
-    if (!m_thumbMutex.tryLock()) {
+    if (!m_thumbMutex.tryLock(50)) {
         return nullptr;
     }
     std::unique_ptr<Mlt::Producer> thumbProd;
     if (!m_thumbXml.isEmpty()) {
+        m_thumbMutex.unlock();
         QReadLocker lock(&pCore->xmlMutex);
         thumbProd.reset(new Mlt::Producer(pCore->thumbProfile(), "xml-string", m_thumbXml.constData()));
-        m_thumbMutex.unlock();
         return thumbProd;
     }
     if (KdenliveSettings::gpu_accel()) {
@@ -1060,6 +1061,8 @@ std::shared_ptr<Mlt::Producer> ProjectClip::getTimelineProducer(int trackId, int
         createDisabledMasterProducer();
         int duration = m_masterProducer->time_to_frames(m_masterProducer->get("kdenlive:duration")) - 1;
         std::shared_ptr<Mlt::Producer> prod(m_disabledProducer->cut(-1, duration > 0 ? duration : -1));
+        // Ensure we don't lose audio index
+        prod->set("kdenlive:audio_index", audioStream);
         if (m_clipType == ClipType::Timeline) {
             prod->set("set.test_audio", 1);
             prod->set("set.test_image", 1);
@@ -1106,7 +1109,7 @@ std::shared_ptr<Mlt::Producer> ProjectClip::getTimelineProducer(int trackId, int
             QString url;
             QString original_resource;
             if (m_clipStatus == FileStatus::StatusMissing) {
-                url = QStringLiteral("timewarp:%1:%2").arg(QString::fromStdString(std::to_string(speed)), QStringLiteral("qtext"));
+                url = QStringLiteral("timewarp:%1:%2").arg(QString::number(speed, 'g', 15), QStringLiteral("qtext"));
                 original_resource = originalProducer()->get("resource");
 
             } else {
@@ -1117,7 +1120,7 @@ std::shared_ptr<Mlt::Producer> ProjectClip::getTimelineProducer(int trackId, int
                     // We must use the special "consumer" producer for mlt playlist files
                     resource.prepend(QStringLiteral("consumer:"));
                 }
-                url = QStringLiteral("timewarp:%1:%2").arg(QString::fromStdString(std::to_string(speed)), resource);
+                url = QStringLiteral("timewarp:%1:%2").arg(QString::number(speed, 'g', 15), resource);
             }
             warpProducer.reset(new Mlt::Producer(pCore->getProjectProfile(), url.toUtf8().constData()));
             int original_length = originalProducer()->get_length();
@@ -1223,7 +1226,11 @@ std::pair<std::shared_ptr<Mlt::Producer>, bool> ProjectClip::giveMasterAndGetTim
                     qDebug() << "Warning: weird, we found a disabled clip whose master is already loaded but we don't have any yet";
                     createDisabledMasterProducer();
                 }
-                return {std::shared_ptr<Mlt::Producer>(m_disabledProducer->cut(in, out)), false};
+                auto disabledProducer = std::shared_ptr<Mlt::Producer>(m_disabledProducer->cut(in, out));
+                if (master->property_exists("kdenlive:audio_index")) {
+                    disabledProducer->set("kdenlive:audio_index", master->get_int("kdenlive:audio_index"));
+                }
+                return {disabledProducer, false};
             }
             // We have a good id, this clip can be used
             return {master, true};
@@ -1290,7 +1297,11 @@ std::pair<std::shared_ptr<Mlt::Producer>, bool> ProjectClip::giveMasterAndGetTim
                 if (!m_disabledProducer) {
                     createDisabledMasterProducer();
                 }
-                return {std::make_shared<Mlt::Producer>(m_disabledProducer->cut(master->get_in(), master->get_out())), true};
+                auto disabledProducer = std::make_shared<Mlt::Producer>(m_disabledProducer->cut(master->get_in(), master->get_out()));
+                if (master->property_exists("kdenlive:audio_index")) {
+                    disabledProducer->set("kdenlive:audio_index", master->get_int("kdenlive:audio_index"));
+                }
+                return {disabledProducer, true};
             }
             qDebug() << "Warning: weird, we found a clip whose master is not loaded but we already have a master";
             Q_ASSERT(false);
@@ -1308,7 +1319,7 @@ std::pair<std::shared_ptr<Mlt::Producer>, bool> ProjectClip::giveMasterAndGetTim
     return {std::shared_ptr<Mlt::Producer>(pCore->mediaUnavailable->cut()), false};
 }
 
-void ProjectClip::cloneProducerToFile(const QString &path, bool thumbsProducer)
+void ProjectClip::cloneProducerToFile(const QString &path, bool thumbsProducer, bool audioOnly)
 {
     QMutexLocker lk(&m_producerMutex);
     QReadLocker lock(&pCore->xmlMutex);
@@ -1316,8 +1327,9 @@ void ProjectClip::cloneProducerToFile(const QString &path, bool thumbsProducer)
     c.set("time_format", "frames");
     c.set("no_meta", 1);
     c.set("no_root", 1);
-    if (m_clipType != ClipType::Timeline && m_clipType != ClipType::Playlist && m_clipType != ClipType::Text && m_clipType != ClipType::TextTemplate) {
-        // Playlist and text clips need to keep their profile info
+    if ((m_clipType != ClipType::Timeline || audioOnly) && m_clipType != ClipType::Playlist && m_clipType != ClipType::Text &&
+        m_clipType != ClipType::TextTemplate) {
+        // Playlist and text clips need to keep their profile info, except if we want to generate audio
         c.set("no_profile", 1);
     }
     c.set("root", "/");
@@ -1330,7 +1342,22 @@ void ProjectClip::cloneProducerToFile(const QString &path, bool thumbsProducer)
     /*if (ignore) {
         s.set("ignore_points", ignore);
     }*/
-    if (!thumbsProducer && m_usesProxy) {
+    if (audioOnly) {
+        // Disable all video tracks to speedup audio thumbs
+        QFile file(path);
+        if (file.open(QIODevice::ReadOnly)) {
+            QTextStream in(&file);
+            QString content = in.readAll();
+            file.close();
+            content.replace(QStringLiteral("hide=\"audio\""), QStringLiteral("hide=\"both\""));
+            content.replace(QStringLiteral("\"set.test_image\">0"), QStringLiteral("\"set.test_image\">1"));
+            if (file.open(QIODevice::WriteOnly)) {
+                QTextStream out(&file);
+                out << content;
+                file.close();
+            }
+        }
+    } else if (!thumbsProducer && m_usesProxy) {
         QFile file(path);
         if (file.open(QIODevice::ReadOnly)) {
             QTextStream in(&file);
@@ -2059,9 +2086,16 @@ int ProjectClip::audioChannels(int stream) const
     return audioInfo()->channels(stream);
 }
 
-void ProjectClip::discardAudioThumb()
+void ProjectClip::discardVideoThumbs()
 {
-    if (!m_audioInfo) {
+    m_uuid = QUuid::createUuid();
+    m_thumbXml.clear();
+    ThumbnailCache::get()->invalidateThumbsForClip(m_binId);
+}
+
+void ProjectClip::discardAudioThumb(bool recreate)
+{
+    if (!m_audioInfo || pCore->projectItemModel()->closing) {
         return;
     }
     pCore->taskManager.discardJobs(ObjectId(KdenliveObjectType::BinClip, m_binId.toInt(), QUuid()), AbstractTask::AUDIOTHUMBJOB);
@@ -2069,25 +2103,24 @@ void ProjectClip::discardAudioThumb()
     const QList<int> streams = m_audioInfo->streams().keys();
     // Delete audio thumbnail data
     for (const int &st : streams) {
-        audioThumbPath = getAudioThumbPath(st);
-        if (!audioThumbPath.isEmpty()) {
-            QFile::remove(audioThumbPath);
+        // Delete stored thumbnail
+        if (recreate || m_clipType != ClipType::Timeline) {
+            audioThumbPath = getAudioThumbPath(st);
+            if (!audioThumbPath.isEmpty()) {
+                QFile::remove(audioThumbPath);
+            }
         }
         // Clear audio cache
         QString key = QStringLiteral("%1:%2").arg(m_binId).arg(st);
         pCore->audioThumbCache.insert(key, QByteArray("-"));
     }
-    // Delete thumbnail
-    for (const int &st : streams) {
-        audioThumbPath = getAudioThumbPath(st);
-        if (!audioThumbPath.isEmpty()) {
-            QFile::remove(audioThumbPath);
-        }
-    }
-
     resetProducerProperty(QStringLiteral("kdenlive:audio_max"));
     m_audioThumbCreated = false;
     refreshAudioInfo();
+    if (recreate) {
+        // Generate thumb
+        AudioLevelsTask::start(ObjectId(KdenliveObjectType::BinClip, m_binId.toInt(), QUuid()), this, false);
+    }
 }
 
 int ProjectClip::getAudioStreamFfmpegIndex(int mltStream)
@@ -2573,7 +2606,7 @@ bool ProjectClip::isIncludedInTimeline()
 
 bool ProjectClip::isIncludedInSequence(const QUuid &seqUuid)
 {
-    if (m_registeredClipsByUuid.isEmpty()) {
+    if (m_registeredClipsByUuid.size() == 0) {
         return false;
     }
     return m_registeredClipsByUuid.contains(seqUuid);
@@ -2779,7 +2812,7 @@ QVector<int16_t> ProjectClip::audioFrameCache(const int streamIdx) const
         const auto audioData = *static_cast<QVector<int16_t> *>(m_masterProducer->get_data(key.toUtf8().constData()));
         return audioData;
     }
-    qWarning() << "Audio levels not found for bin" << m_binId;
+    qWarning() << "Audio levels not found for bin" << m_binId << ", STREAM: " << streamIdx << ", TYPE: " << m_clipType;
     return {};
 }
 
@@ -3132,6 +3165,11 @@ const QString ProjectClip::getSequenceResource()
     return QString();
 }
 
+QTemporaryFile *ProjectClip::getSequenceTmpResource()
+{
+    return nullptr;
+}
+
 void ProjectClip::removeSequenceWarpResources() {}
 
 std::pair<int, int> ProjectClip::fpsInfo() const
@@ -3295,4 +3333,14 @@ void ProjectClip::loadMasks(const QString &maskData)
         ix++;
     }
     Q_EMIT masksUpdated();
+}
+
+bool ProjectClip::audioSynced() const
+{
+    return true;
+}
+
+void ProjectClip::markAudioDirty()
+{
+    // Not relevant for normal clips, only for sequences
 }

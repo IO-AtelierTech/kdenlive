@@ -37,6 +37,7 @@
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QSortFilterProxyModel>
+#include <QTimer>
 #include <QUuid>
 
 const int TimelineWidget::comboScale[] = {1, 2, 4, 8, 15, 30, 50, 75, 100, 150, 200, 300, 500, 800, 1000, 1500, 2000, 3000, 6000, 15000, 30000};
@@ -112,7 +113,7 @@ const QMap<QString, QString> TimelineWidget::sortedItems(const QStringList &item
 }
 
 void TimelineWidget::setTimelineMenu(QMenu *clipMenu, QMenu *compositionMenu, QMenu *timelineMenu, QMenu *guideMenu, QMenu *timelineRulerMenu,
-                                     QAction *editGuideAction, QMenu *headerMenu, QMenu *thumbsMenu, QMenu *subtitleClipMenu)
+                                     QAction *editGuideAction, QMenu *headerMenu, QMenu *thumbsMenu, QMenu *subtitleClipMenu, QMenu *addClipMenu)
 {
     m_timelineClipMenu = new QMenu(this);
     QList<QAction *> cActions = clipMenu->actions();
@@ -144,6 +145,7 @@ void TimelineWidget::setTimelineMenu(QMenu *clipMenu, QMenu *compositionMenu, QM
     m_headerMenu->addMenu(m_thumbsMenu);
     m_timelineSubtitleClipMenu = subtitleClipMenu;
     m_editGuideAcion = editGuideAction;
+    m_addClipMenu = addClipMenu;
     updateEffectFavorites();
     updateTransitionFavorites();
     connect(m_favEffects, &QMenu::triggered, this, [&](QAction *ac) { timelineController.addEffectToClip(ac->data().toString()); });
@@ -159,11 +161,14 @@ void TimelineWidget::setTimelineMenu(QMenu *clipMenu, QMenu *compositionMenu, QM
     connect(m_timelineRulerMenu, &QMenu::aboutToHide, this, &TimelineWidget::slotUngrabHack, Qt::DirectConnection);
     connect(m_timelineMenu, &QMenu::aboutToHide, this, &TimelineWidget::slotUngrabHack, Qt::DirectConnection);
     connect(m_timelineMenu, &QMenu::triggered, this, &TimelineWidget::slotResetContextPos);
+    connect(m_timelineMenu, &QMenu::aboutToShow, this, &TimelineWidget::updateAddClipMenuStatus);
+    connect(m_timelineMenu, &QMenu::triggered, this, &TimelineWidget::updateAddClipMenuStatus);
     connect(m_timelineSubtitleClipMenu, &QMenu::aboutToHide, this, &TimelineWidget::slotUngrabHack, Qt::DirectConnection);
 
     m_timelineClipMenu->addMenu(m_favEffects);
     m_timelineClipMenu->addMenu(m_favCompositions);
     m_timelineMenu->addMenu(m_favCompositions);
+    m_timelineMenu->addMenu(m_addClipMenu);
 }
 
 const QUuid &TimelineWidget::getUuid() const
@@ -401,12 +406,36 @@ void TimelineWidget::showTimelineMenu()
         }
         m_guideMenu->addAction(ac);
     }
+    m_addMenuConnection = connect(m_addClipMenu, &QMenu::aboutToShow, this, [this]() {
+        QPoint posInWidget = mapFromGlobal(m_clickPos);
+        int addClipFrame = timelineController.getMousePos(posInWidget);
+        int addClipTrack = timelineController.getMouseTrack(posInWidget);
+        // Calculate maximum available space on this track
+        int maxSpace = timelineController.getFreeSpace(addClipTrack, addClipFrame);
+        pCore->bin()->setSuggestedDuration(maxSpace);
+        pCore->bin()->setReadyCallBack([this, addClipTrack, addClipFrame](const QString &clipId) {
+            qDebug() << "CALLBACK TRIGGERED FOR CLIP:" << clipId;
+            // Process with insertion
+            timelineController.insertClips(addClipTrack, addClipFrame, QStringList(clipId), true, true);
+        });
+        QObject::disconnect(m_addMenuConnection);
+    });
     m_timelineMenu->popup(m_clickPos);
 }
 
 void TimelineWidget::showSubtitleClipMenu()
 {
     m_timelineSubtitleClipMenu->popup(m_clickPos);
+}
+
+void TimelineWidget::updateAddClipMenuStatus()
+{
+    int tid = timelineController.getMouseTrack();
+    if (tid == -2 || tid == -1 || !model()->isTrack(tid) || model()->isAudioTrack(tid)) {
+        m_addClipMenu->setEnabled(false);
+    } else {
+        m_addClipMenu->setEnabled(true);
+    }
 }
 
 void TimelineWidget::slotChangeZoom(int value, bool zoomOnMouse)
@@ -489,6 +518,7 @@ void TimelineWidget::slotUngrabHack()
     QTimer::singleShot(250, this, [this]() {
         // Reset menu position, necessary if user closes the menu without selecting any action
         rootObject()->setProperty("clickFrame", -1);
+        QObject::disconnect(m_addMenuConnection);
     });
     if (quickWindow()) {
         if (quickWindow()->mouseGrabberItem()) {

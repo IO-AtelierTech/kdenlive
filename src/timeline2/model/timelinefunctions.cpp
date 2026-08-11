@@ -178,15 +178,15 @@ bool TimelineFunctions::processClipCut(const std::shared_ptr<TimelineItemModel> 
         };
         PUSH_LAMBDA(local_undo, undo);
         // Assign end mix to new clone clip
-        if (!hasStartMix && subplaylist != 1) {
+        if (!hasStartMix && subplaylist != 0) {
             Fun local_redo2 = [timeline, trackId, clipId, start]() {
-                // If the clip has no start mix, move to playlist 1
-                return timeline->getTrackById_const(trackId)->switchPlaylist(clipId, start, 0, 1);
+                // If the clip has no start mix, move to playlist 0
+                return timeline->getTrackById_const(trackId)->switchPlaylist(clipId, start, 1, 0);
             };
             // Restore initial subplaylist on undo
             Fun local_undo2 = [timeline, trackId, clipId, start]() {
-                // If the clip has no start mix, move back to playlist 0
-                return timeline->getTrackById_const(trackId)->switchPlaylist(clipId, start, 1, 0);
+                // If the clip has no start mix, move back to playlist 1
+                return timeline->getTrackById_const(trackId)->switchPlaylist(clipId, start, 0, 1);
             };
             res = res && local_redo2();
             if (res) {
@@ -269,7 +269,15 @@ bool TimelineFunctions::requestClipCut(const std::shared_ptr<TimelineItemModel> 
         int mainOut = mainIn + timeline->getItemPlaytime(clipId);
         if (position > mainIn && position < mainOut) {
             trackToSelect = timeline->getItemTrackId(clipId);
-            if (timeline->getSubtitleModel() != nullptr) subLayerToSelect = timeline->getSubtitleLayer(clipId);
+        }
+    } else if (timeline->isSubTitle(clipId)) {
+        int mainIn = timeline->getItemPosition(clipId);
+        int mainOut = mainIn + timeline->getItemPlaytime(clipId);
+        if (position > mainIn && position < mainOut) {
+            trackToSelect = timeline->getItemTrackId(clipId);
+        }
+        if (timeline->getSubtitleModel() != nullptr) {
+            subLayerToSelect = timeline->getSubtitleLayer(clipId);
         }
     }
     // We need to call clearSelection before attempting the split or the group split will be corrupted by the selection group (no undo support)
@@ -1148,26 +1156,29 @@ bool TimelineFunctions::switchEnableState(const std::shared_ptr<TimelineItemMode
 bool TimelineFunctions::changeClipState(const std::shared_ptr<TimelineItemModel> &timeline, int clipId, PlaylistState::ClipState status, Fun &undo, Fun &redo)
 {
     int track = timeline->getClipTrackId(clipId);
-    int start = -1;
-    bool invalidate = false;
-    if (track > -1) {
-        if (!timeline->getTrackById_const(track)->isAudioTrack()) {
-            invalidate = true;
-        }
-        start = timeline->getItemPosition(clipId);
-    }
     Fun local_undo = []() { return true; };
     Fun local_redo = []() { return true; };
     // For the state change to work, we need to unplant/replant the clip
     bool result = true;
-    if (track > -1) {
-        result = timeline->getTrackById(track)->requestClipDeletion(clipId, true, invalidate, local_undo, local_redo, false, false);
-    }
     result = timeline->m_allClips[clipId]->setClipState(status, local_undo, local_redo);
-    if (result && track > -1) {
-        result = timeline->getTrackById(track)->requestClipInsertion(clipId, start, true, true, local_undo, local_redo, false, false);
+    if (!result) {
+        bool undone = local_undo();
+        Q_ASSERT(undone);
+        pCore->displayMessage(i18n("Cannot change clip state"), ErrorMessage);
+    } else {
+        Fun replug_clip = []() { return true; };
+        if (track > -1) {
+            replug_clip = [timeline, track, clipId]() {
+                timeline->getTrackById(track)->replugClip(clipId);
+                return true;
+            };
+        }
+        replug_clip();
+        PUSH_LAMBDA(replug_clip, local_undo);
+        PUSH_LAMBDA(replug_clip, local_redo);
+
+        UPDATE_UNDO_REDO_NOLOCK(local_redo, local_undo, undo, redo);
     }
-    UPDATE_UNDO_REDO_NOLOCK(local_redo, local_undo, undo, redo);
     return result;
 }
 
@@ -2568,7 +2579,7 @@ bool TimelineFunctions::pasteTimelineClips(const std::shared_ptr<TimelineItemMod
         }
         if (!pCore->projectItemModel()->hasClip(originalId)) {
             // Clip import was not successful, continue
-            pCore->displayMessage(i18n("All clips were not successfully copied"), ErrorMessage, 500);
+            pCore->displayMessage(i18n("Not all clips were copied successfully"), ErrorMessage, 500);
             continue;
         }
         int in = prod.attribute(QStringLiteral("in")).toInt();
@@ -2613,9 +2624,15 @@ bool TimelineFunctions::pasteTimelineClips(const std::shared_ptr<TimelineItemMod
             warp_pitch = prod.attribute(QStringLiteral("warp_pitch")).toInt();
         }
         int audioStream = prod.attribute(QStringLiteral("audioStream")).toInt();
+        PlaylistState::ClipState state = static_cast<PlaylistState::ClipState>(prod.attribute(QStringLiteral("state")).toInt());
+        if (state != PlaylistState::Disabled) {
+            PlaylistState::ClipState trackState = timeline->getTrackById_const(curTrackId)->trackType();
+            if (state != trackState) {
+                state = trackState;
+            }
+        }
         int newId;
-        bool created = timeline->requestClipCreation(originalId, newId, timeline->getTrackById_const(curTrackId)->trackType(), audioStream, speed, warp_pitch,
-                                                     timeline_undo, timeline_redo);
+        bool created = timeline->requestClipCreation(originalId, newId, state, audioStream, speed, warp_pitch, timeline_undo, timeline_redo);
         if (!created) {
             // Something is broken
             pCore->displayMessage(i18n("Could not paste items in timeline"), ErrorMessage, 500);

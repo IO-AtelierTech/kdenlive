@@ -168,6 +168,7 @@ public:
         PositionOffsetRole,   /// clip only
         TimeRemapRole,        /// clip only
         ItemATrack,           /// composition only
+        IsHiddenRole,         /// composition only
         ItemIdRole,
         ThumbsFormatRole,   /// track only
         EffectNamesRole,    /// track and clip only
@@ -184,6 +185,7 @@ public:
 
     ~TimelineModel() override;
     Mlt::Tractor *tractor() const { return m_tractor.get(); }
+    void setReOpenTimeline();
     /** @brief Load tracks from the current tractor, used on project opening
      */
     void loadTractor();
@@ -244,6 +246,8 @@ public:
        @param clipId Id of the composition to test */
     Q_INVOKABLE int getCompositionTrackId(int compoId) const;
 
+    /** @brief Temporarily hide a composition */
+    Q_INVOKABLE void hideComposition(int itemId, bool hide);
     /** @brief Convenience function that calls either of the previous ones based on item type*/
     Q_INVOKABLE int getItemTrackId(int itemId) const;
 
@@ -459,7 +463,8 @@ public:
        the clip is in a group, the call is deferred to requestGroupMove @param
        transid is the ID of the composition @param trackId is the ID of the
        track */
-    Q_INVOKABLE bool requestCompositionMove(int compoId, int trackId, int position, bool updateView = true, bool logUndo = true, bool fakeMove = false);
+    Q_INVOKABLE bool requestCompositionMove(int compoId, int trackId, int position, bool updateView = true, bool logUndo = true, bool fakeMove = false,
+                                            bool allowResize = false);
 
     /* Same function, but accumulates undo and redo, and doesn't check
        for group*/
@@ -490,7 +495,8 @@ public:
     Q_INVOKABLE QVariantList suggestClipMove(int clipId, int trackId, int position, int cursorPosition, int snapDistance = -1, bool moveMirrorTracks = true,
                                              bool fakeMove = false);
     Q_INVOKABLE int suggestSubtitleMove(int subId, int newLayer, int position, int cursorPosition, int snapDistance, bool fakeMove = false);
-    Q_INVOKABLE QVariantList suggestCompositionMove(int compoId, int trackId, int position, int cursorPosition, int snapDistance = -1, bool fakeMove = false);
+    Q_INVOKABLE QVariantList suggestCompositionMove(int compoId, int trackId, int position, int cursorPosition, int snapDistance = -1, bool fakeMove = false,
+                                                    bool allowAdjustDuration = false);
     /** @brief returns the frame pos adjusted to edit mode
      */
     Q_INVOKABLE int adjustFrame(int frame, int trackId);
@@ -505,11 +511,11 @@ public:
        @param refreshView whether the view should be refreshed
        @param useTargets: if true, the Audio/video split will occur on the set targets. Otherwise, they will be computed as an offset from the middle line
     */
-    bool requestClipInsertion(const QString &binClipId, int trackId, int position, int &id, bool logUndo = true, bool refreshView = false,
-                              bool useTargets = true);
+   bool requestClipInsertion(const QString &binClipId, int trackId, int position, int &id, bool logUndo = true, bool refreshView = false,
+                       bool useTargets = true, int finalMove = -1);
     /* Same function, but accumulates undo and redo*/
-    bool requestClipInsertion(const QString &binClipId, int trackId, int position, int &id, bool logUndo, bool refreshView, bool useTargets, Fun &undo,
-                              Fun &redo, const QVector<int> &allowedTracks = QVector<int>());
+   bool requestClipInsertion(const QString &binClipId, int trackId, int position, int &id, bool logUndo, bool refreshView, bool useTargets, Fun &undo,
+                       Fun &redo, const QVector<int> &allowedTracks = QVector<int>(), int finalMove = -1);
 
     /** @brief Switch current composition type
      *  @param cid the id of the composition we want to change
@@ -576,6 +582,8 @@ protected:
     void setSelected(int itemId, bool sel);
     /** @brief Check if selection is 2 clips from the same bin clip and check offset */
     void checkAndUpdateOffset(std::unordered_set<int> pairIds);
+    /** @brief Get the optimal length for a transition when moving it, according to the related clips */
+    int getOptimalTransitionDuration(int trackId, int position);
 
 public:
     /** @brief Deletes the given clip or composition from the timeline.
@@ -613,7 +621,7 @@ public:
        @param clipId is the id of the clip that triggers the group deletion
     */
     Q_INVOKABLE bool requestGroupDeletion(int clipId, bool logUndo = true);
-    bool requestGroupDeletion(int clipId, Fun &undo, Fun &redo);
+    bool requestGroupDeletion(int clipId, Fun &undo, Fun &redo, bool logUndo = true);
 
     /** @brief Change the duration of an item (clip or composition)
      *  This action is undoable
@@ -1056,7 +1064,8 @@ Q_SIGNALS:
     void requestClearAssetView(int);
     void requestMonitorRefresh();
     /** @brief signal triggered by track operations */
-    void invalidateZone(int in, int out);
+    void invalidateZone(int in, int out, bool isAudio = false);
+    void invalidateAudioZone(int in, int out);
     /** @brief signal triggered when a track duration changed (insertion/deletion) */
     void durationUpdated(const QUuid &uuid);
 

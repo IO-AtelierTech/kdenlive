@@ -30,7 +30,6 @@ class AudioDevInfo: public QIODevice
     Q_OBJECT
 public:
     AudioDevInfo(const QAudioFormat &format, QObject *parent = nullptr);
-    quint32 maxAmplitude = 0;
 
 Q_SIGNALS:
     void levelChanged(const QVector<qreal> &dbLevels);
@@ -81,7 +80,7 @@ public:
     void pauseRecording();
     void resumeRecording();
     /** @brief Start the real audio capture **/
-    int startCapture(bool showCountdown);
+    int startCapture(bool allowCountDown);
     void initializeAudioSetup();
 
 public Q_SLOTS:
@@ -93,8 +92,8 @@ private:
     std::unique_ptr<QMediaCaptureSession> m_mediaCapture;
     std::unique_ptr<QMediaRecorder> m_mediaRecorder;
     std::unique_ptr<QAudioSource> m_audioSource{nullptr};
-    std::unique_ptr<QAudioInput> m_audioInput;
-    QScopedPointer<AudioDevInfo> m_audioInfo;
+    std::unique_ptr<QAudioInput> m_audioInput{nullptr};
+    QScopedPointer<AudioDevInfo> m_audioInfo{nullptr};
     QUuid m_recordingSequence;
     std::unique_ptr<QMediaRecorder> m_videoRecorder;
     std::unique_ptr<QCamera> m_camera;

@@ -38,7 +38,10 @@ jobs:
         include:
           - name: windows-x86_64
             target: windows-cl-msvc2022-x86_64
-            os: windows-latest
+            # windows-latest is now windows-2025-vs2026 (VS 18.x) which Craft
+            # cannot detect (it only searches VS 16-18 in [17,18) range);
+            # pin to windows-2022 so VS 2022 (v143) is found.
+            os: windows-2022
 
           - name: linux-x86_64
             target: linux-64-gcc
@@ -51,13 +54,15 @@ jobs:
     env:
       CRAFT_TARGET: ${{ matrix.target }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Let Qt's pkg-config find the runner's system xkbcommon (xkbcommon-x11.pc)
+      PKG_CONFIG_PATH: ${{ matrix.target == 'linux-64-gcc' && '/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig' || '' }}
 
     steps:
       # -----------------------------------------------------------------------
       # Checkout
       # -----------------------------------------------------------------------
       - name: Check out source code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0          # Full history for version detection
 
@@ -65,7 +70,7 @@ jobs:
       # Setup Python
       # -----------------------------------------------------------------------
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -73,12 +78,12 @@ jobs:
       # Restore Craft cache
       # -----------------------------------------------------------------------
       - name: Restore Craft cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/cache
-          key: craft-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('.craft.ini') }}
+          key: craft-${{ runner.os }}-${{ matrix.target }}-v2-${{ hashFiles('.craft.ini') }}
           restore-keys: |
-            craft-${{ runner.os }}-${{ matrix.target }}-
+            craft-${{ runner.os }}-${{ matrix.target }}-v2-
 
       # -----------------------------------------------------------------------
       # Clear Android environment (Linux only)
@@ -137,6 +142,17 @@ jobs:
             libxcb-xinerama0-dev \
             libxcb-xkb-dev \
             libxcb-cursor-dev \
+            libxcb-xinput-dev \
+            libxcb-composite0-dev \
+            libxcb-damage0-dev \
+            libxcb-dpms0-dev \
+            libxcb-ewmh-dev \
+            libxcb-glx0-dev \
+            libxcb-present-dev \
+            libxcb-record0-dev \
+            libxcb-res0-dev \
+            libxcb-screensaver0-dev \
+            libxcb-xf86dri0-dev \
             libxkbcommon-dev \
             libxkbcommon-x11-dev \
             libgl1-mesa-dev \
@@ -149,6 +165,7 @@ jobs:
             libgbm-dev \
             libpulse-dev \
             libasound2-dev \
+            libcrypt1 \
             libcups2-dev \
             libdbus-1-dev \
             libatspi2.0-dev \
@@ -162,6 +179,7 @@ jobs:
             libsqlite3-dev \
             libpcre2-dev \
             libglib2.0-dev \
+            libsysprof-capture-4-dev \
             libx11-dev \
             libx11-xcb-dev \
             libxext-dev \
@@ -200,6 +218,57 @@ jobs:
           & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --set srcDir="$env:GITHUB_WORKSPACE" kde/kdemultimedia/kdenlive
 
       # -----------------------------------------------------------------------
+      # Craft blueprint option overrides (Linux only)
+      # -----------------------------------------------------------------------
+      # pulseaudio is not in KDE's binary cache, so it always builds from source;
+      # the blueprint's default (man pages) breaks the build, so disable them.
+      # NOTE: qtbase/qttools must NOT be overridden: Craft compares the package
+      # config against KDE's cache manifest and falls back to source builds on
+      # any mismatch (withAccessibility/args), which produced ABI-inconsistent
+      # Qt trees (source qtbase without accessibility vs cached qtdeclarative).
+      - name: Override blueprint options
+        if: matrix.target == 'linux-64-gcc'
+        shell: bash
+        run: |
+          f="$HOME/craft/CraftMaster/linux-64-gcc/etc/BlueprintSettings.ini"
+          mkdir -p "$(dirname "$f")"
+          set_opt() {
+            section="$1"; key="$2"; value="$3"
+            if [ -f "$f" ] && grep -q "^\[${section}\]" "$f"; then
+              # Section exists (craft persists registered options): set/update the key inside it
+              awk -v sec="$section" -v k="$key" -v v="$value" '
+                BEGIN { ins = 0; done = 0 }
+                /^\[/ { if (ins && !done) { print k " = " v; done = 1 } ins = 0 }
+                $0 ~ "^\\[" sec "\\]$" { ins = 1 }
+                ins && $0 ~ "^" k "[[:space:]]*=" { print k " = " v; done = 1; next }
+                { print }
+                END { if (ins && !done) print k " = " v }
+              ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+            else
+              printf '[%s]\n%s = %s\n' "$section" "$key" "$value" >> "$f"
+            fi
+          }
+          set_opt libs/pulseaudio args "-Dman=false"
+          grep -A3 '^\[libs/' "$f"
+          # bigsh0t: bitbucket.org blocks wget's TLS fingerprint (404), so
+          # pre-seed craft's download cache with the mirror tarball (SHA256
+          # 001ed35e... matches the blueprint's targetDigest). Craft skips its
+          # own fetch when the archive is already present.
+          mkdir -p "$HOME/craft/CraftMaster/downloads/archives/libs/frei0r-bigsh0t"
+          curl -sSL -o "$HOME/craft/CraftMaster/downloads/archives/libs/frei0r-bigsh0t/2.6.tar.bz2" \
+            "https://github.com/Rusbelito/kdenlive/releases/download/bigsh0t-2.6-mirror/bigsh0t-2.6.tar.bz2"
+          sha256sum "$HOME/craft/CraftMaster/downloads/archives/libs/frei0r-bigsh0t/2.6.tar.bz2"
+          # pulseaudio: www.freedesktop.org returns 418 'I'm a teapot' to GitHub
+          # runner IPs (anti-bot), so pre-seed craft's download cache with the
+          # byte-identical mirror tarball (SHA256 0167649c... matches the
+          # blueprint's targetDigest for pulseaudio 17.0). Craft skips its own
+          # fetch when the archive is already present.
+          mkdir -p "$HOME/craft/CraftMaster/downloads/archives/libs/pulseaudio"
+          curl -sSL -o "$HOME/craft/CraftMaster/downloads/archives/libs/pulseaudio/pulseaudio-17.0.tar.gz" \
+            "https://github.com/Rusbelito/kdenlive/releases/download/pulseaudio-17.0-mirror/pulseaudio-17.0.tar.gz"
+          echo "0167649c734fc38f72034036d87dd8b27430a0f40d47fca36b1136714ff0e1cc  $HOME/craft/CraftMaster/downloads/archives/libs/pulseaudio/pulseaudio-17.0.tar.gz" | sha256sum -c -
+
+      # -----------------------------------------------------------------------
       # Prepare build environment
       # -----------------------------------------------------------------------
       - name: Prepare build environment
@@ -221,6 +290,18 @@ jobs:
           & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --install-deps kde/kdemultimedia/kdenlive
 
       # -----------------------------------------------------------------------
+      # Stage Craft downloads cache
+      # -----------------------------------------------------------------------
+      # Copy craft's download cache (all source tarballs) into ~/cache so the
+      # GitHub Actions cache stores it and future runs restore the archives.
+      # With every tarball present, craft never fetches from the internet, which
+      # makes the build immune to host-level blocking (freedesktop.org 418).
+      - name: Stage Craft downloads cache
+        run: |
+          New-Item -ItemType Directory -Force "$HOME/cache" | Out-Null
+          Copy-Item -Path "$env:HOME/craft/CraftMaster/downloads/*" -Destination "$HOME/cache/" -Recurse -Force
+
+      # -----------------------------------------------------------------------
       # Build Kdenlive
       # -----------------------------------------------------------------------
       - name: Build Kdenlive
@@ -232,14 +313,82 @@ jobs:
       # Run tests
       # -----------------------------------------------------------------------
       - name: Run tests
+        env:
+          # Windows runners have no X display; tests abort at startup with
+          # "qt.qpa.xcb: could not connect to display" otherwise.
+          QT_QPA_PLATFORM: offscreen
         run: |
+          if ($IsLinux) {
+              # Linux: run under Xvfb + Mesa software GL (llvmpipe), like KDE's
+              # own CI. The offscreen platform has no GL contexts and the tests'
+              # window is null, which breaks the timeline preview render and
+              # swallows the kdenlive_render subprocess stderr.
+              sudo apt-get update -qq
+              sudo apt-get install -y -qq xvfb mesa-utils
+              Remove-Item Env:QT_QPA_PLATFORM -ErrorAction SilentlyContinue
+              $env:DISPLAY = ":99"
+              $env:LIBGL_ALWAYS_SOFTWARE = "1"
+              Start-Process Xvfb -ArgumentList ":99", "-screen", "0", "1280x1024x24" -NoNewWindow
+              Start-Sleep -Seconds 2
+              # TestMain.cpp resolves the MLT repository from $CRAFT_ROOT
+              # (<craft-root>/lib/mlt-7) and falls back to a NULL factory init
+              # when it is unset, which crashes the MLT-based tests.
+              $craft = "$env:HOME/craft/CraftMaster/linux-64-gcc"
+              $env:CRAFT_ROOT = $craft
+              $env:MLT_REPOSITORY = "$craft/lib/mlt-7"
+              $env:MLT_DATA = "$craft/share/mlt-7"
+              $env:MLT_PROFILES_PATH = "$craft/share/mlt-7/profiles"
+              $env:MLT_PRESETS_PATH = "$craft/share/mlt-7/presets"
+          }
           & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --test kde/kdemultimedia/kdenlive
         continue-on-error: true   # Don't fail build on test failures (for now)
+
+      # -----------------------------------------------------------------------
+      # Pre-seed system libs for linuxdeploy (Linux only)
+      # -----------------------------------------------------------------------
+      # The KDE binary cache's libcupsimage.so.2 NEEDs libcrypt.so.2, but
+      # Ubuntu 24.04 (noble) does not ship it (libcrypt1 only has .so.1), so
+      # linuxdeploy cannot deploy it. Build libxcrypt (same 4.4.36 version as
+      # noble's libcrypt1) from the release tarball with the new ABI only
+      # (--disable-obsolete-api gives libcrypt.so.2) and pre-seed the lib
+      # into every location Craft may stage the appdir from.
+      - name: Pre-seed libcrypt for linuxdeploy
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sSL -o /tmp/libxcrypt.tar.xz \
+            "https://github.com/besser82/libxcrypt/releases/download/v4.4.36/libxcrypt-4.4.36.tar.xz"
+          tar -C /tmp -xf /tmp/libxcrypt.tar.xz
+          cd /tmp/libxcrypt-4.4.36
+          ./configure --prefix=/tmp/libxcrypt/out --disable-obsolete-api >/dev/null
+          make -j2 >/dev/null
+          make install >/dev/null
+          lib=$(find /tmp/libxcrypt/out -name 'libcrypt.so.2*' -type f | head -1)
+          [ -n "$lib" ] || { echo "ERROR: libcrypt.so.2 build failed"; exit 1; }
+          echo "Built $lib"
+          prefix="$HOME/craft/CraftMaster/linux-64-gcc"
+          img=$(ls -d "$prefix/build/kde/kdemultimedia/kdenlive/image-RelWithDebInfo-"* | head -1)
+          [ -n "$img" ] || { echo "ERROR: kdenlive image dir not found"; exit 1; }
+          for dest in \
+            "$img/usr/lib" \
+            "$img/home/runner/craft/CraftMaster/linux-64-gcc/usr/lib" \
+            "$prefix/build/kde/kdemultimedia/kdenlive/archive/usr/lib"; do
+            mkdir -p "$dest"
+            cp -f "$lib" "$dest/libcrypt.so.2"
+            echo "Seeded libcrypt.so.2 -> $dest"
+          done
 
       # -----------------------------------------------------------------------
       # Package
       # -----------------------------------------------------------------------
       - name: Create package
+        env:
+          # Skip AppStream validation in appimagetool: appstreamcli checks
+          # bugtracker URLs (bugs.kde.org), which GitHub runner IPs cannot
+          # reach (KDE blocks them), so validation always fails with
+          # "url-not-reachable" warnings. The AppImage itself is unaffected.
+          NO_APPSTREAM: "1"
         run: |
           & "$env:GITHUB_WORKSPACE/.github/workflows/.craft.ps1" -c --package kde/kdemultimedia/kdenlive
 
@@ -259,7 +408,7 @@ jobs:
       # Upload artifacts
       # -----------------------------------------------------------------------
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kdenlive-websocket-${{ matrix.name }}
           path: ${{ github.workspace }}/binaries/*
@@ -282,13 +431,13 @@ jobs:
       # Download all build artifacts
       # -----------------------------------------------------------------------
       - name: Download Windows artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: kdenlive-websocket-windows-x86_64
           path: release/windows
 
       - name: Download Linux artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: kdenlive-websocket-linux-x86_64
           path: release/linux
@@ -297,6 +446,7 @@ jobs:
       # Prepare release files
       # -----------------------------------------------------------------------
       - name: Prepare release files
+        shell: bash   # bash syntax; workflow default is pwsh
         run: |
           mkdir -p release/final
 
@@ -319,7 +469,7 @@ jobs:
       # Create GitHub Release
       # -----------------------------------------------------------------------
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: Kdenlive WebSocket ${{ env.VERSION }}
           body: |

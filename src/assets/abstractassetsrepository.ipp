@@ -25,6 +25,7 @@ template <typename AssetType> void AbstractAssetsRepository<AssetType>::init()
 {
     // Parse include/exclude lists
     if (!pCore->debugMode) {
+        parseAssetList(assetHiddenPath(), m_hiddenList);
         parseAssetList(assetExcludedPath(), m_excludedList);
         parseAssetList(assetIncludedPath(), m_includedList);
     }
@@ -51,6 +52,9 @@ template <typename AssetType> void AbstractAssetsRepository<AssetType>::init()
                 if (m_includedList.contains(name)) {
                     info.included = true;
                 }
+                if (m_hiddenList.contains(name)) {
+                    info.type = AssetListType::AssetType::Hidden;
+                }
                 if (info.xml.isNull()) {
                     // Metadata was invalid
                     emptyMetaAssets << name;
@@ -65,6 +69,7 @@ template <typename AssetType> void AbstractAssetsRepository<AssetType>::init()
     // We now parse custom effect xml
     // Set the directories to look into for effects.
     QStringList asset_dirs = assetDirs();
+    qDebug() << "Loading asset xml files from the following locations" << asset_dirs;
 
     /* Parsing of custom xml works as follows: we parse all custom files.
        Each of them contains a tag, which is the corresponding mlt asset, and an id that is the name of the asset. Note that several custom files can correspond
@@ -446,6 +451,9 @@ template <typename AssetType> bool AbstractAssetsRepository<AssetType>::parseInf
     if (m_includedList.contains(res.mltId)) {
         res.included = true;
     }
+    if (m_hiddenList.contains(res.mltId)) {
+        res.type = AssetListType::AssetType::Hidden;
+    }
     return true;
 }
 
@@ -477,3 +485,19 @@ template <typename AssetType> QDomElement AbstractAssetsRepository<AssetType>::g
     }
     return m_assets.at(assetId).xml.cloneNode().toElement();
 }
+
+template <typename AssetType> QStringList AbstractAssetsRepository<AssetType>::qtDataDir(const QString &assetLocation) const
+{
+    QStringList dirs;
+    QString qtDataDirsEnv = qEnvironmentVariable("QT_DATA_DIRS");
+#ifdef Q_OS_WIN
+    auto separator = u';';
+#else
+    auto separator = u':';
+#endif
+    for (const auto dir : qTokenize(qtDataDirsEnv, separator)) {
+        dirs.push_back(QDir::cleanPath(dir.toString() + "/kdenlive/" + assetLocation));
+    }
+    return dirs;
+}
+

@@ -281,6 +281,7 @@ QHash<int, QByteArray> TimelineItemModel::roleNames() const
     roles[AudioStreamIndexRole] = "audioStreamIndex";
     roles[IsCompositeRole] = "composite";
     roles[IsLockedRole] = "locked";
+    roles[IsHiddenRole] = "hideItem";
     roles[FadeInRole] = "fadeIn";
     roles[FadeOutRole] = "fadeOut";
     roles[FadeInMethodRole] = "fadeInMethod";
@@ -515,6 +516,8 @@ QVariant TimelineItemModel::data(const QModelIndex &index, int role) const
             return compo->showKeyframes();
         case ItemATrack:
             return compo->getForcedTrack();
+        case IsHiddenRole:
+            return compo->isHidden();
         case MarkersRole: {
             QVariantList markersList;
             return markersList;
@@ -566,10 +569,14 @@ void TimelineItemModel::setTrackProperty(int trackId, const QString &name, const
         roles.push_back(IsLockedRole);
     } else if (name == QLatin1String("hide")) {
         roles.push_back(IsDisabledRole);
-        if (!track->isAudioTrack() && !isLoading) {
-            pCore->invalidateItem(ObjectId(KdenliveObjectType::TimelineTrack, trackId, m_uuid));
-            pCore->refreshProjectMonitorOnce();
-            updateMultiTrack = true;
+        if (!isLoading) {
+            if (!track->isAudioTrack()) {
+                pCore->invalidateItem(ObjectId(KdenliveObjectType::TimelineTrack, trackId, m_uuid));
+                pCore->refreshProjectMonitorOnce();
+                updateMultiTrack = true;
+            } else {
+                pCore->invalidateAudio(ObjectId(KdenliveObjectType::TimelineTrack, trackId, m_uuid));
+            }
         }
     } else if (name == QLatin1String("kdenlive:timeline_active")) {
         roles.push_back(TrackActiveRole);

@@ -108,7 +108,7 @@ auto RenderHandler::handleGetPresets(const QJsonObject & /*params*/) -> QJsonObj
         QJsonObject presetObj;
         presetObj[QStringLiteral("name")] = preset->name();
         presetObj[QStringLiteral("extension")] = preset->extension();
-        presetObj[QStringLiteral("group")] = preset->groupName();
+        presetObj[QStringLiteral("group")] = preset->groupId();
 
         presets.append(presetObj);
     }
@@ -135,7 +135,7 @@ auto RenderHandler::handleGetPresetInfo(const QJsonObject &params) -> QJsonObjec
     QJsonObject result;
     result[QStringLiteral("name")] = preset->name();
     result[QStringLiteral("extension")] = preset->extension();
-    result[QStringLiteral("group")] = preset->groupName();
+    result[QStringLiteral("group")] = preset->groupId();
     result[QStringLiteral("note")] = preset->note();
     result[QStringLiteral("standard")] = preset->standard();
     result[QStringLiteral("params")] = preset->params().toString();

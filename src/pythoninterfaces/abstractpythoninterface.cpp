@@ -167,9 +167,15 @@ AbstractPythonInterface::AbstractPythonInterface(QObject *parent)
 
 AbstractPythonInterface::~AbstractPythonInterface()
 {
-    qDebug() << ":::: DELETING ABSTRACT PYTHONN INMTERRFACE.....";
+    qDebug() << ":::: DELETING ABSTRACT PYTHON INTERFACE.....";
     if (m_watcher.isRunning()) {
         m_watcher.waitForFinished();
+    }
+    if (m_depsWatcher.isRunning()) {
+        m_depsWatcher.waitForFinished();
+    }
+    if (m_versionWatcher.isRunning()) {
+        m_versionWatcher.waitForFinished();
     }
 }
 
@@ -528,12 +534,14 @@ const QString AbstractPythonInterface::getScript(const QString &scriptName) cons
 
 void AbstractPythonInterface::checkDependenciesConcurrently()
 {
-    (void)QtConcurrent::run(&AbstractPythonInterface::checkDependencies, this, false, false);
+    m_depsJob = QtConcurrent::run(&AbstractPythonInterface::checkDependencies, this, false, false);
+    m_depsWatcher.setFuture(m_depsJob);
 }
 
 void AbstractPythonInterface::checkVersionsConcurrently()
 {
-    (void)QtConcurrent::run(&AbstractPythonInterface::checkVersions, this, true);
+    m_versionJob = QtConcurrent::run(&AbstractPythonInterface::checkVersions, this, true);
+    m_versionWatcher.setFuture(m_versionJob);
 }
 
 bool AbstractPythonInterface::checkDependencies(bool force, bool async)
@@ -798,7 +806,7 @@ const QStringList AbstractPythonInterface::listDependencies()
 QString AbstractPythonInterface::runScript(const QString &script, QStringList args, const QString &firstarg, bool concurrent, bool packageFeedback)
 {
     const QString scriptpath = m_scripts.value(script);
-    qDebug() << "=== CHECKING RUNNING SCTIPR: " << scriptpath;
+    qDebug() << "=== CHECKING RUNNING SCRIPT: " << scriptpath;
     const QString pythonExe = venvPythonExecs().python;
     if (pythonExe.isEmpty()) {
         Q_EMIT setupError(i18n("Python exec not found"));
@@ -839,11 +847,11 @@ QString AbstractPythonInterface::runScript(const QString &script, QStringList ar
 
     scriptJob.start(pythonExe, args);
     // Don't timeout
-    qDebug() << "::: RUNNONG SCRIPT: " << pythonExe << " = " << args;
+    qDebug() << "::: RUNNING SCRIPT: " << pythonExe << " = " << args;
     scriptJob.waitForFinished(-1);
 
     if (scriptJob.exitStatus() != QProcess::NormalExit || scriptJob.exitCode() != 0) {
-        const QString errorMessage = scriptJob.readAllStandardError();
+        const QString errorMessage = concurrent ? scriptJob.readAllStandardOutput() : scriptJob.readAllStandardError();
         Q_EMIT setupError(i18n("Error while running python3 script:\n %1\n%2", scriptpath, errorMessage));
         if (installAction) {
             setStatus(Broken);

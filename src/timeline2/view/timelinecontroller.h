@@ -253,7 +253,7 @@ public:
        @param logUndo if set to false, no undo object is stored
        @return the id of the inserted composition
     */
-    Q_INVOKABLE int insertComposition(int tid, int position, const QString &transitionId, bool logUndo);
+    Q_INVOKABLE int insertComposition(int tid, int position, QString transitionId, bool logUndo, int duration = -1);
     /** @brief Request inserting a new mix in timeline (dragged from compositions list)
        @param tid is the destination track
        @param position is the timeline position (clip start of the second clip)
@@ -273,7 +273,7 @@ public:
        @return the id of the inserted composition
     */
     Q_INVOKABLE int insertNewCompositionAtPos(int tid, int position, const QString &transitionId);
-    Q_INVOKABLE int insertNewComposition(int tid, int clipId, int offset, const QString &transitionId, bool logUndo);
+    Q_INVOKABLE int insertNewComposition(int tid, int clipId, int offset, QString transitionId, bool logUndo);
 
     /** @brief Request deletion of the currently selected clips
      */
@@ -482,7 +482,7 @@ public:
     /** @brief If clip is enabled, disable, otherwise enable
      */
     Q_INVOKABLE void switchEnableState(std::unordered_set<int> selection = {});
-    Q_INVOKABLE void addCompositionToClip(const QString &assetId, int clipId = -1, int offset = -1);
+    Q_INVOKABLE int addCompositionToClip(const QString &assetId, int clipId = -1, int offset = -1);
     Q_INVOKABLE void addEffectToClip(const QString &assetId, int clipId = -1);
     Q_INVOKABLE void setEffectsEnabled(int clipId, bool enabled);
 
@@ -560,12 +560,22 @@ public:
     /** @brief Get the x,y position of the mouse in the timeline widget
      */
     Q_INVOKABLE const QPoint getMousePosInTimeline() const;
+    /** @brief Warp the mouse cursor to a new position */
+    Q_INVOKABLE void warpCursor(const QPoint &pos);
+    /** @brief Hide or show the mouse cursor */
+    Q_INVOKABLE void hideCursor(bool hide);
+    int m_cursorHidden{0};
     /** @brief Get the frame where mouse is positioned
      */
     Q_INVOKABLE int getMousePos();
+    int getMousePos(const QPoint &pos);
     /** @brief Get the frame where mouse is positioned
      */
-    int getMouseTrack();
+    Q_INVOKABLE int getMouseTrack();
+    int getMouseTrack(const QPoint &pos);
+    double scale() const { return m_scale; }
+    /** @brief Returns the free space at position on track tid */
+    Q_INVOKABLE int getFreeSpace(int tid, int position);
     /** @brief Returns a map of track ids/track names
      */
     QMap<int, QString> getTrackNames(bool videoOnly);
@@ -732,6 +742,7 @@ public Q_SLOTS:
     void disablePreview(bool disable);
     void invalidateItem(int cid);
     void invalidateTrack(int tid);
+    void invalidateMix(ObjectId owner);
     void checkDuration();
     /** @brief Dis / enable multi track view. */
     void slotMultitrackView(bool enable = true, bool refresh = true);

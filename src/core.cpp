@@ -195,6 +195,9 @@ bool Core::build(LinuxPackageType packageType, bool testMode, bool debugMode, bo
         }
         m_self->buildSplash(firstRun, showWelcome && KdenliveSettings::showWelcome() && !KdenliveSettings::openlastproject(), showRecovery, wasUpgraded);
     }
+    if (m_self->closing) {
+        return true;
+    }
 
     m_self->m_projectItemModel = ProjectItemModel::construct();
     m_self->m_projectManager = new ProjectManager(m_self.get());
@@ -237,6 +240,129 @@ void Core::buildSplash(bool firstRun, bool showWelcome, bool showCrashRecovery, 
     } else {
         m_splash = new Splash(QString(KDENLIVE_VERSION), {}, {}, {}, false, firstRun, showCrashRecovery, wasUpgraded);
     }
+    connect(m_splash, &Splash::resetConfig, this, [this]() {
+        m_abortInitAndRestart = true;
+        QMetaObject::invokeMethod(this, "cleanRestart", Qt::QueuedConnection, Q_ARG(bool, true));
+    });
+    connect(m_splash, &Splash::openBlank, this, [this]() {
+        if (m_splash->hasEventLoop() || !m_guiConstructed) {
+            connect(this, &Core::mainWindowReady, this, [&]() {
+                // Ensure the slot is called once project manager is build.
+                QMetaObject::invokeMethod(m_projectManager, "slotLoadOnOpen", Qt::QueuedConnection);
+            });
+        } else {
+            QMetaObject::invokeMethod(pCore->projectManager(), "slotLoadOnOpen", Qt::QueuedConnection);
+        }
+    });
+    connect(m_splash, &Splash::openLink, this, [this](QString url) { openLink(QUrl(url)); });
+
+    // Check if welcome screen is displayed
+    if (m_splash->welcomeDisplayed()) {
+        connect(this, &Core::closeSplash, this, [this]() {
+            disconnect(this, &Core::loadingMessageNewStage, m_splash, nullptr);
+            disconnect(this, &Core::closeSplash, this, nullptr);
+            m_splash->deleteLater();
+        });
+        connect(m_splash, &Splash::openFile, this, [this](QString url) {
+            // Ensure this can only be called once
+            disconnect(m_splash, &Splash::openFile, this, nullptr);
+            Q_EMIT loadingMessageNewStage(i18n("Loading project…"));
+            if (m_splash->hasEventLoop() || !m_guiConstructed) {
+                connect(this, &Core::mainWindowReady, this,
+                        [&, url]() { QMetaObject::invokeMethod(m_projectManager, "openFile", Qt::QueuedConnection, Q_ARG(QUrl, QUrl::fromLocalFile(url))); });
+            } else {
+                QMetaObject::invokeMethod(m_projectManager, "openFile", Q_ARG(QUrl, QUrl::fromLocalFile(url)));
+            }
+        });
+        connect(m_splash, &Splash::openOtherFile, this, [this]() {
+            if (m_splash->hasEventLoop() || !m_guiConstructed) {
+                connect(this, &Core::mainWindowReady, [this]() { QMetaObject::invokeMethod(m_projectManager, "slotOpenFile", Qt::QueuedConnection); });
+            } else {
+                QMetaObject::invokeMethod(m_projectManager, "slotOpenFile", Qt::QueuedConnection);
+            }
+        });
+        connect(m_splash, &Splash::closeApp, this, [this]() {
+            closing = true;
+            if (m_splash->hasEventLoop() || !m_guiConstructed) {
+                QMetaObject::invokeMethod(this, "cleanRestart", Qt::QueuedConnection, Q_ARG(bool, false));
+            } else {
+                QFile lockFile(QDir::temp().absoluteFilePath(QStringLiteral("kdenlivelock")));
+                lockFile.remove();
+                m_splash->deleteLater();
+                delete m_mainWindow;
+                qApp->quit();
+            }
+        });
+        // Switch palette is disabled in crash recovery
+        connect(m_splash, &Splash::switchPalette, this, &Core::switchDarkPalette);
+
+        connect(m_splash, &Splash::openTemplate, this, [this](QString url) {
+            if (url.isEmpty()) {
+                // Open project settings
+                if (m_splash->hasEventLoop() || !m_guiConstructed) {
+                    connect(this, &Core::mainWindowReady, this, [&]() {
+                        m_mainWindow->show();
+                        m_splash->fadeOut();
+                        QMetaObject::invokeMethod(m_projectManager, "newFile", Qt::QueuedConnection, Q_ARG(bool, true));
+                    });
+                } else {
+                    m_mainWindow->show();
+                    m_splash->fadeOut();
+                    m_projectManager->newFile(true);
+                }
+            } else {
+                Q_EMIT loadingMessageNewStage(i18n("Loading project…"));
+                if (m_splash->hasEventLoop() || !m_guiConstructed) {
+                    connect(this, &Core::mainWindowReady, this, [&, url]() {
+                        m_mainWindow->show();
+                        QMetaObject::invokeMethod(m_projectManager, "newFile", Qt::QueuedConnection, Q_ARG(QString, url), Q_ARG(bool, false));
+                    });
+                } else {
+                    m_mainWindow->show();
+                    m_projectManager->newFile(url, false);
+                }
+            }
+        });
+        if (m_splash->hasCrashRecovery()) {
+            connect(m_splash, &Splash::firstStart, this, [&](QString descriptiveString, QString fps, bool interlaced, int vTracks, int aTracks) {
+                connect(this, &Core::mainWindowReady, this, [&, descriptiveString, fps, interlaced, vTracks, aTracks]() {
+                    startFromGuessedProfile(descriptiveString, fps, interlaced, vTracks, aTracks);
+                });
+            });
+        } else {
+            connect(m_splash, &Splash::firstStart, this, [&](QString descriptiveString, QString fps, bool interlaced, int vTracks, int aTracks) {
+                if (!guiReady()) {
+                    connect(this, &Core::mainWindowReady, this, [&, descriptiveString, fps, interlaced, vTracks, aTracks]() {
+                        startFromGuessedProfile(descriptiveString, fps, interlaced, vTracks, aTracks);
+                    });
+                } else {
+                    startFromGuessedProfile(descriptiveString, fps, interlaced, vTracks, aTracks);
+                }
+            });
+        }
+        m_splash->setReady();
+    } else {
+        // Simple splash
+        connect(this, &Core::closeSplash, m_splash, &Splash::fadeOutAndDelete, Qt::QueuedConnection);
+
+        /*QObject::connect(pCore.get(), &Core::loadingMessageNewStage, &splash, &Splash::showProgressMessage, Qt::DirectConnection);
+        QObject::connect(pCore.get(), &Core::loadingMessageIncrease, &splash, &Splash::increaseProgressMessage, Qt::DirectConnection);
+        QObject::connect(pCore.get(), &Core::loadingMessageHide, &splash, &Splash::clearMessage, Qt::DirectConnection);*/
+    }
+    connect(this, &Core::loadingMessageNewStage, m_splash, &Splash::showProgressMessage, Qt::DirectConnection);
+    if (m_splash->hasEventLoop()) {
+        // Last startup crashed, so stop here until we have a change to reset the config file
+        connect(m_splash, &Splash::releaseLock, this, [&]() {
+            qDebug() << "::::::: EVENT LOOP RELEASED!!!\n\nSSSSSSSSSSSSSSSSSSSSSSSSSSSSS";
+            m_loop.quit();
+            disconnect(m_splash, &Splash::releaseLock, this, nullptr);
+        });
+        m_loop.exec();
+        if (m_abortInitAndRestart || closing) {
+            // We want to restart, no need to continue
+            return;
+        }
+    }
     qApp->processEvents(QEventLoop::AllEvents);
 }
 
@@ -252,6 +378,9 @@ void Core::initHeadless(const QUrl &url)
 
 void Core::initGUI(const QString &MltPath, const QUrl &Url, const QStringList &clipsToLoad)
 {
+    if (closing) {
+        return;
+    }
     KDDockWidgets::Config::self().setDragAboutToStartFunc([](KDDockWidgets::Core::Draggable *) -> bool {
         if (!KdenliveSettings::showtitlebars()) {
             pCore->updateHideBarsTimer(true);
@@ -263,164 +392,6 @@ void Core::initGUI(const QString &MltPath, const QUrl &Url, const QStringList &c
         // cleanup
         pCore->updateHideBarsTimer(false);
     });
-
-    if (m_splash) {
-        connect(m_splash, &Splash::resetConfig, this, [this]() {
-            m_abortInitAndRestart = true;
-            QMetaObject::invokeMethod(this, "cleanRestart", Qt::QueuedConnection, Q_ARG(bool, true));
-        });
-        connect(m_splash, &Splash::openBlank, this, [this]() {
-            if (m_splash->hasEventLoop()) {
-                connect(this, &Core::mainWindowReady, m_projectManager, &ProjectManager::slotLoadOnOpen, Qt::QueuedConnection);
-            } else {
-                QMetaObject::invokeMethod(pCore->projectManager(), "slotLoadOnOpen", Qt::QueuedConnection);
-            }
-        });
-        connect(m_splash, &Splash::openLink, this, [this](QString url) { openLink(QUrl(url)); });
-
-        // Check if welcome screen is displayed
-        if (m_splash->welcomeDisplayed()) {
-            connect(this, &Core::closeSplash, this, [this]() {
-                disconnect(this, &Core::loadingMessageNewStage, m_splash, nullptr);
-                disconnect(this, &Core::closeSplash, this, nullptr);
-                m_splash->deleteLater();
-            });
-            connect(m_splash, &Splash::openFile, this, [this](QString url) {
-                // Ensure this can only be called once
-                disconnect(m_splash, &Splash::openFile, this, nullptr);
-                if (m_splash->hasEventLoop()) {
-                    connect(this, &Core::mainWindowReady, this, [&, url]() {
-                        QMetaObject::invokeMethod(m_projectManager, "openFile", Qt::QueuedConnection, Q_ARG(QUrl, QUrl::fromLocalFile(url)));
-                    });
-                } else {
-                    QMetaObject::invokeMethod(m_projectManager, "openFile", Q_ARG(QUrl, QUrl::fromLocalFile(url)));
-                }
-            });
-            connect(m_splash, &Splash::openOtherFile, this, [this]() {
-                if (m_splash->hasEventLoop()) {
-                    connect(this, &Core::mainWindowReady, [this]() { QMetaObject::invokeMethod(m_projectManager, "slotOpenFile", Qt::QueuedConnection); });
-                } else {
-                    QMetaObject::invokeMethod(m_projectManager, "slotOpenFile", Qt::QueuedConnection);
-                }
-            });
-            connect(m_splash, &Splash::closeApp, this, [this]() {
-                if (m_splash->hasEventLoop()) {
-                    QMetaObject::invokeMethod(this, "cleanRestart", Qt::QueuedConnection, Q_ARG(bool, false));
-                } else {
-                    QFile lockFile(QDir::temp().absoluteFilePath(QStringLiteral("kdenlivelock")));
-                    lockFile.remove();
-                    m_splash->deleteLater();
-                    delete m_mainWindow;
-                    qApp->quit();
-                }
-            });
-            // Switch palette is disabled in crash recovery
-            connect(m_splash, &Splash::switchPalette, this, &Core::switchDarkPalette);
-
-            // History
-            connect(m_splash, &Splash::clearHistory, this, [&]() {
-                if (m_splash->hasEventLoop()) {
-                    connect(this, &Core::mainWindowReady, this, [&]() {
-                        m_projectManager->recentFilesAction()->clear();
-                        m_projectManager->recentFilesAction()->saveEntries(KConfigGroup(KSharedConfig::openConfig(), "Recent Files"));
-                    });
-                } else {
-                    m_projectManager->recentFilesAction()->clear();
-                    m_projectManager->recentFilesAction()->saveEntries(KConfigGroup(KSharedConfig::openConfig(), "Recent Files"));
-                }
-            });
-            connect(m_splash, &Splash::forgetFile, this, [&](const QString path) {
-                if (m_splash->hasEventLoop()) {
-                    connect(this, &Core::mainWindowReady, this, [&, path]() {
-                        m_projectManager->recentFilesAction()->removeUrl(QUrl::fromLocalFile(path));
-                        m_projectManager->recentFilesAction()->saveEntries(KConfigGroup(KSharedConfig::openConfig(), "Recent Files"));
-                    });
-                } else {
-                    m_projectManager->recentFilesAction()->removeUrl(QUrl::fromLocalFile(path));
-                    m_projectManager->recentFilesAction()->saveEntries(KConfigGroup(KSharedConfig::openConfig(), "Recent Files"));
-                }
-            });
-            connect(m_splash, &Splash::clearProfiles, this, [&]() {
-                KdenliveSettings::setRecentProfiles({});
-                KdenliveSettings::setRecentProfileNames({});
-            });
-            connect(m_splash, &Splash::forgetProfile, this, [&](const QString path) {
-                QStringList profileIds = KdenliveSettings::recentProfiles();
-                QStringList profileNames = KdenliveSettings::recentProfileNames();
-                int ix = profileIds.indexOf(path);
-                if (ix > -1) {
-                    profileIds.removeAt(ix);
-                    profileNames.removeAt(ix);
-                    KdenliveSettings::setRecentProfiles(profileIds);
-                    KdenliveSettings::setRecentProfileNames(profileNames);
-                }
-            });
-
-            connect(m_splash, &Splash::openTemplate, this, [this](QString url) {
-                if (url.isEmpty()) {
-                    // Open project settings
-                    if (m_splash->hasEventLoop()) {
-                        connect(this, &Core::mainWindowReady, this, [&]() {
-                            m_mainWindow->show();
-                            m_splash->fadeOut();
-                            QMetaObject::invokeMethod(m_projectManager, "newFile", Qt::QueuedConnection, Q_ARG(bool, true));
-                        });
-                    } else {
-                        m_mainWindow->show();
-                        m_splash->fadeOut();
-                        m_projectManager->newFile(true);
-                    }
-                } else {
-                    if (m_splash->hasEventLoop()) {
-                        connect(this, &Core::mainWindowReady, this, [&, url]() {
-                            m_mainWindow->show();
-                            QMetaObject::invokeMethod(m_projectManager, "newFile", Qt::QueuedConnection, Q_ARG(QString, url), Q_ARG(bool, false));
-                        });
-                    } else {
-                        m_mainWindow->show();
-                        m_projectManager->newFile(url, false);
-                    }
-                }
-            });
-            if (m_splash->hasCrashRecovery()) {
-                connect(m_splash, &Splash::firstStart, this, [&](QString descriptiveString, QString fps, bool interlaced, int vTracks, int aTracks) {
-                    connect(this, &Core::mainWindowReady, this, [&, descriptiveString, fps, interlaced, vTracks, aTracks]() {
-                        startFromGuessedProfile(descriptiveString, fps, interlaced, vTracks, aTracks);
-                    });
-                });
-            } else {
-                connect(m_splash, &Splash::firstStart, this, [&](QString descriptiveString, QString fps, bool interlaced, int vTracks, int aTracks) {
-                    if (!guiReady()) {
-                        connect(this, &Core::mainWindowReady, this, [&, descriptiveString, fps, interlaced, vTracks, aTracks]() {
-                            startFromGuessedProfile(descriptiveString, fps, interlaced, vTracks, aTracks);
-                        });
-                    } else {
-                        startFromGuessedProfile(descriptiveString, fps, interlaced, vTracks, aTracks);
-                    }
-                });
-            }
-        } else {
-            // Simple splash
-            connect(this, &Core::closeSplash, m_splash, &Splash::fadeOutAndDelete, Qt::QueuedConnection);
-            connect(this, &Core::loadingMessageNewStage, m_splash, &Splash::showProgressMessage, Qt::DirectConnection);
-            /*QObject::connect(pCore.get(), &Core::loadingMessageNewStage, &splash, &Splash::showProgressMessage, Qt::DirectConnection);
-            QObject::connect(pCore.get(), &Core::loadingMessageIncrease, &splash, &Splash::increaseProgressMessage, Qt::DirectConnection);
-            QObject::connect(pCore.get(), &Core::loadingMessageHide, &splash, &Splash::clearMessage, Qt::DirectConnection);*/
-        }
-        if (m_splash->hasEventLoop()) {
-            // Last startup crashed, so stop here until we have a change to reset the config file
-            connect(m_splash, &Splash::releaseLock, this, [&]() {
-                qDebug() << "::::::: EVENT LOOP RELEASED!!!\n\nSSSSSSSSSSSSSSSSSSSSSSSSSSSSS";
-                m_loop.exit();
-                disconnect(m_splash, &Splash::releaseLock, this, nullptr);
-            });
-            m_loop.exec();
-            if (m_abortInitAndRestart) {
-                // We want to restart, no need to continue
-                return;
-            }
-        }
-    }
     m_mainWindow = new MainWindow();
 
     // The MLT Factory will be initiated there, all MLT classes will be usable only after this
@@ -546,12 +517,16 @@ void Core::initGUI(const QString &MltPath, const QUrl &Url, const QStringList &c
 
 void Core::cleanRestart(bool cleanAndRestart)
 {
-    qDebug() << "::: STARTING CLEAN RESTART...";
+    qDebug() << "::: STARTING CLEAN RESTART: " << cleanAndRestart;
     delete m_splash;
-    m_loop.exit();
+    m_loop.quit();
     QFile lockFile(QDir::temp().absoluteFilePath(QStringLiteral("kdenlivelock")));
     lockFile.remove();
-    QTimer::singleShot(1000, this, [&, cleanAndRestart]() {
+    int timeout = 0;
+    if (cleanAndRestart) {
+        timeout = 1000;
+    }
+    QTimer::singleShot(timeout, this, [&, cleanAndRestart]() {
         QApplication::closeAllWindows();
         qApp->exit(cleanAndRestart ? EXIT_CLEAN_RESTART : 1);
     });
@@ -942,6 +917,7 @@ std::unique_ptr<Mlt::Repository> &Core::getMltRepository()
 
 std::unique_ptr<ProfileModel> &Core::getCurrentProfile() const
 {
+    // Q_ASSERT(!m_currentProfile.isEmpty());
     return ProfileRepository::get()->getProfile(m_currentProfile);
 }
 
@@ -1214,7 +1190,7 @@ std::pair<PlaylistState::ClipState, ClipType::ProducerType> Core::getItemState(c
         if (!m_guiConstructed) {
             return {PlaylistState::Disabled, ClipType::Unknown};
         }
-        return m_mainWindow->getBin()->getClipState(id.itemId);
+        return projectItemModel()->getClipState(id.itemId);
     case KdenliveObjectType::TimelineTrack:
         return {currentDoc()->getTimeline(id.uuid)->isAudioTrack(id.itemId) ? PlaylistState::AudioOnly : PlaylistState::VideoOnly, ClipType::Unknown};
     case KdenliveObjectType::Master:
@@ -1552,6 +1528,40 @@ void Core::invalidateRange(QPair<int, int> range)
     Q_EMIT m_mainWindow->getCurrentTimeline()->model()->invalidateZone(range.first, range.second);
 }
 
+void Core::invalidateAudioRange(const QUuid &uuid, int /*in*/, int /*out*/)
+{
+    if (!m_guiConstructed || !m_mainWindow->getCurrentTimeline() || m_mainWindow->getCurrentTimeline()->loading) return;
+    // TODO: invalidate only the item range and regenerate partial audio
+    const QString binId = m_projectItemModel->getSequenceId(uuid);
+    m_mainWindow->getBin()->invalidateClipAudio(binId);
+}
+
+void Core::invalidateAudio(ObjectId itemId)
+{
+    if (!m_guiConstructed || !m_mainWindow->getCurrentTimeline() || m_mainWindow->getCurrentTimeline()->loading) return;
+    switch (itemId.type) {
+    case KdenliveObjectType::TimelineClip:
+    case KdenliveObjectType::TimelineComposition: {
+        // TODO: invalidate only the item range and regenerate partial audio
+        const QString binId = m_projectItemModel->getSequenceId(itemId.uuid);
+        m_mainWindow->getBin()->invalidateClipAudio(binId);
+        break;
+    }
+    case KdenliveObjectType::TimelineTrack:
+    case KdenliveObjectType::Master: {
+        const QString binId = m_projectItemModel->getSequenceId(itemId.uuid);
+        m_mainWindow->getBin()->invalidateClipAudio(binId);
+        break;
+    }
+    case KdenliveObjectType::BinClip:
+        m_mainWindow->getBin()->invalidateClipAudio(QString::number(itemId.itemId));
+        break;
+    default:
+        // compositions should not apply to audio
+        break;
+    }
+}
+
 void Core::invalidateItem(ObjectId itemId)
 {
     if (!m_guiConstructed || !m_mainWindow->getCurrentTimeline() || m_mainWindow->getCurrentTimeline()->loading) return;
@@ -1561,6 +1571,11 @@ void Core::invalidateItem(ObjectId itemId)
     case KdenliveObjectType::TimelineComposition:
         if (tl) {
             tl->controller()->invalidateItem(itemId.itemId);
+        }
+        break;
+    case KdenliveObjectType::TimelineMix:
+        if (tl) {
+            tl->controller()->invalidateMix(itemId);
         }
         break;
     case KdenliveObjectType::TimelineTrack:
@@ -1577,7 +1592,7 @@ void Core::invalidateItem(ObjectId itemId)
         }
         break;
     default:
-        // compositions should not have effects
+        qWarning() << "::::: INVALIDATING ITEM NOT HANDLED: " << int(itemId.type);
         break;
     }
 }
@@ -1744,9 +1759,9 @@ void Core::monitorAudio(int tid, bool monitor)
     }
 }
 
-void Core::startRecording(bool showCountdown)
+void Core::startRecording(bool allowCountDown)
 {
-    int trackId = m_capture->startCapture(showCountdown);
+    int trackId = m_capture->startCapture(allowCountDown);
     if (trackId == -1) {
         return;
     }
@@ -2222,7 +2237,7 @@ std::pair<bool, bool> Core::assetHasAV(ObjectId id)
         return {false, true};
     }
     case KdenliveObjectType::BinClip: {
-        PlaylistState::ClipState state = bin()->getClipState(id.itemId).first;
+        PlaylistState::ClipState state = projectItemModel()->getClipState(id.itemId).first;
         if (state == PlaylistState::Disabled) {
             return {true, true};
         } else if (state == PlaylistState::AudioOnly) {
@@ -2264,6 +2279,14 @@ void Core::showEffectStackFromId(ObjectId owner)
 
 void Core::openDocumentationLink(const QUrl &link)
 {
+    if (link.isEmpty()) {
+        // Silently abort
+        return;
+    }
+    if (link.isLocalFile()) {
+        highlightFileInExplorer({link});
+        return;
+    }
     if (KMessageBox::questionTwoActions(
             QApplication::activeWindow(),
             i18n("This will open a browser to display Kdenlive's online documentation at the following url:\n %1", link.toDisplayString()), {},
@@ -2319,4 +2342,22 @@ void Core::closeApp()
     }
     QApplication::closeAllWindows();
     QApplication::exit(EXIT_SUCCESS);
+}
+
+const QStringList Core::getLumasForProfile()
+{
+    if (getCurrentFrameSize().width() < 1000 && getCurrentFrameSize().height() < 1000) {
+        if (MainWindow::m_lumaFiles.contains(QLatin1String("NTSC")) && getCurrentFrameSize() == QSize(720, 480)) {
+            return MainWindow::m_lumaFiles.value(QStringLiteral("NTSC"));
+        }
+        return MainWindow::m_lumaFiles.value(QStringLiteral("PAL"));
+    }
+    // At some point, we should create square and vertical lumas...
+    if (MainWindow::m_lumaFiles.contains(QLatin1String("square")) && getCurrentFrameSize().height() == getCurrentFrameSize().width()) {
+        return MainWindow::m_lumaFiles.value(QStringLiteral("square"));
+    }
+    if (MainWindow::m_lumaFiles.contains(QLatin1String("9_16")) && getCurrentDar() < 1.) {
+        return MainWindow::m_lumaFiles.value(QStringLiteral("9_16"));
+    }
+    return MainWindow::m_lumaFiles.value(QStringLiteral("16_9"));
 }

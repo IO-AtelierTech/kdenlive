@@ -186,7 +186,9 @@ void EffectsRepository::parseCustomAssetFile(const QString &file_name, std::unor
         if (!ok) {
             continue;
         }
-        result.type = assetType;
+        if (result.type != AssetListType::AssetType::Hidden) {
+            result.type = assetType;
+        }
 
         if (customAssets.count(result.id) > 0) {
             if (result.version < customAssets.at(result.id).version) {
@@ -211,6 +213,10 @@ QStringList EffectsRepository::assetDirs() const
     dirs << QStandardPaths::locateAll(QStandardPaths::AppLocalDataLocation, QStringLiteral("effect-templates"), QStandardPaths::LocateDirectory);
 #endif
     dirs.append(QStandardPaths::locateAll(QStandardPaths::AppDataLocation, QStringLiteral("effects"), QStandardPaths::LocateDirectory));
+
+    dirs << qtDataDir(QStringLiteral("effect-templates"));
+    dirs << qtDataDir(QStringLiteral("effects"));
+
     return dirs;
 }
 
@@ -236,6 +242,11 @@ QStringList EffectsRepository::assetIncludedPath() const
 QStringList EffectsRepository::assetExcludedPath() const
 {
     return {QStringLiteral(":data/excluded_effects.txt")};
+}
+
+QStringList EffectsRepository::assetHiddenPath() const
+{
+    return {QStringLiteral(":data/hidden_effects.txt")};
 }
 
 QString EffectsRepository::assetPreferredListPath() const

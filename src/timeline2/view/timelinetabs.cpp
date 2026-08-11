@@ -130,7 +130,7 @@ TimelineWidget *TimelineTabs::addTimeline(const QUuid uuid, int ix, const QStrin
     disconnect(this, &TimelineTabs::currentChanged, this, &TimelineTabs::connectCurrent);
     TimelineWidget *newTimeline = new TimelineWidget(uuid, this);
     newTimeline->setTimelineMenu(m_timelineClipMenu, m_timelineCompositionMenu, m_timelineMenu, m_guideMenu, m_timelineRulerMenu, m_editGuideAction,
-                                 m_headerMenu, m_thumbsMenu, m_timelineSubtitleClipMenu);
+                                 m_headerMenu, m_thumbsMenu, m_timelineSubtitleClipMenu, m_timelineAddClipMenu);
     newTimeline->setModel(timelineModel, proxy);
     int newIndex = 0;
     if (ix == -1 || ix >= count()) {
@@ -268,11 +268,12 @@ TimelineWidget *TimelineTabs::getCurrentTimeline() const
     return m_activeTimeline;
 }
 
-void TimelineTabs::closeTimelineTab(const QUuid uuid)
+void TimelineTabs::closeTimelineTab(const QUuid uuid, bool checkActiveClosed)
 {
     QMutexLocker lk(&m_lock);
     auto *doc = pCore->currentDoc();
     int currentCount = count();
+    bool activeTimelineClosed = false;
     disconnect(this, &TimelineTabs::currentChanged, this, &TimelineTabs::connectCurrent);
     bool closing = doc ? doc->closing : true;
     for (int i = 0; i < currentCount; i++) {
@@ -281,6 +282,7 @@ void TimelineTabs::closeTimelineTab(const QUuid uuid)
             removeTab(i);
             timeline->blockSignals(true);
             if (timeline == m_activeTimeline) {
+                activeTimelineClosed = true;
                 Q_EMIT showSubtitle(-1);
                 pCore->window()->disconnectTimeline(timeline, closing);
                 disconnectTimeline(timeline);
@@ -301,6 +303,11 @@ void TimelineTabs::closeTimelineTab(const QUuid uuid)
         return;
     }
     connect(this, &TimelineTabs::currentChanged, this, &TimelineTabs::connectCurrent);
+    // if the tab is being closed by an undo action,
+    // we need to trigger the connection of the remaining tab, as the undo stack won't trigger a currentChanged signal
+    if (checkActiveClosed && activeTimelineClosed && count() > 0) {
+        connectCurrent(currentIndex());
+    }
 }
 
 void TimelineTabs::connectTimeline(TimelineWidget *timeline)
@@ -395,7 +402,7 @@ void TimelineTabs::buildClipMenu()
 }
 
 void TimelineTabs::setTimelineMenu(QMenu *compositionMenu, QMenu *timelineMenu, QMenu *guideMenu, QMenu *timelineRulerMenu, QAction *editGuideAction,
-                                   QMenu *headerMenu, QMenu *thumbsMenu, QMenu *subtitleClipMenu)
+                                   QMenu *headerMenu, QMenu *thumbsMenu, QMenu *subtitleClipMenu, QMenu *addClipMenu)
 {
     buildClipMenu();
     m_timelineCompositionMenu = compositionMenu;
@@ -407,6 +414,7 @@ void TimelineTabs::setTimelineMenu(QMenu *compositionMenu, QMenu *timelineMenu, 
     m_headerMenu->addMenu(m_thumbsMenu);
     m_timelineSubtitleClipMenu = subtitleClipMenu;
     m_editGuideAction = editGuideAction;
+    m_timelineAddClipMenu = addClipMenu;
 }
 
 const QStringList TimelineTabs::openedSequences()

@@ -61,7 +61,7 @@ auto ConnectionHandler::handlePing(const QJsonObject & /*params*/) -> QJsonObjec
 auto ConnectionHandler::handleGetVersion(const QJsonObject & /*params*/) -> QJsonObject
 {
     return QJsonObject{{QStringLiteral("result"), QJsonObject{{QStringLiteral("kdenlive"), QStringLiteral(KDENLIVE_VERSION)},
-                                                              {QStringLiteral("rpc"), QString::fromLatin1(RPC_VERSION)}}}};
+                                                              {QStringLiteral("rpc"), QString::fromLatin1(RPC_PROTOCOL_VERSION)}}}};
 }
 
 auto ConnectionHandler::handleGetCapabilities(const QJsonObject & /*params*/) -> QJsonObject

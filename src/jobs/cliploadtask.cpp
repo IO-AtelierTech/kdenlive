@@ -272,7 +272,8 @@ void ClipLoadTask::generateThumbnail(std::shared_ptr<ProjectClip> binClip, std::
                                                   Q_ARG(int, m_out), Q_ARG(bool, false));
                     } else if (binClip.get() && !m_isCanceled.loadAcquire()) {
                         // We don't follow m_isCanceled there,
-                        qDebug() << "=== GOT THUMB FOR: " << m_in << "x" << m_out << ", UUID: " << m_sequenceUuid << "\nXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+                        qDebug() << "=== GOT THUMB FOR: " << m_owner.itemId << "; TYPE: " << int(m_owner.type) << ", " << m_in << "x" << m_out
+                                 << ", UUID: " << m_sequenceUuid << "\nXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
                         ThumbnailCache::get()->storeThumbnail(QString::number(m_owner.itemId), frameNumber, result, false);
                         m_progress = 100;
                         if (m_sequenceUuid.isNull()) {
@@ -666,6 +667,20 @@ void ClipLoadTask::run()
             int fixedLength = int(originalLength * pCore->getCurrentFps() / originalFps);
             producer->set("length", fixedLength);
             producer->set("out", fixedLength - 1);
+        }
+
+        // Ensure audio / video status is passed from original producer
+        std::unique_ptr<Mlt::Frame> frame(tmpProd->get_frame());
+        bool hasAudio = frame->get_int("test_audio") == 0;
+        bool hasVideo = frame->get_int("test_video") == 0;
+        if (hasAudio) {
+            if (hasVideo) {
+                producer->set("kdenlive:clip_type", 0);
+            } else {
+                producer->set("kdenlive:clip_type", 1);
+            }
+        } else if (hasVideo) {
+            producer->set("kdenlive:clip_type", 2);
         }
     } else if (mltService.startsWith(QLatin1String("avformat"))) {
         // Start probe to init properties

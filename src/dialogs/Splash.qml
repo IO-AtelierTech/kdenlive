@@ -18,8 +18,6 @@ Window {
     property var fileDates: []
     property var profileIds: []
     property var profileNames: []
-    property var templates: ["atsc_1080p_25", "dv_pal"]
-    property var templateNames: ["HD 25 fps", "DV Pal"]
     property var horizontalModel: [{value: "3840x2160x709x1x1x16x9", text: i18n("4K UHD 3840x2160")}, {value: "4096x2160x709x1x1x256x135", text: i18n("4K DCI 4096x2160")}, {value: "2560x1440x709x1x1x16x9", text: i18n("2.5K QHD 2560x1440")}, {value: "1920x1080x709x1x1x16x9", text: i18n("Full HD 1920x1080")}, {value: "1280x720x709x1x1x16x9", text: i18n("HD 1280x720")}, {value: "720x480x601x32x27x16x9", text: i18n("SD NTSC Wide 720x480")}, {value: "720x480x601x8x9x4x3", text: i18n("SD NTSC 720x480")}, {value: "720x576x601x64x45x16x9", text: i18n("SD PAL Wide 720x576")}, {value: "720x576x601x16x15x4x3", text: i18n("SD PAL 720x576")}]
     property var verticalModel: [{value: "1080x1920x709x1x1x9x16", text: i18n("Full HD 1080x1920")}, {value: "720x1280x709x1x1x9x16", text: i18n("HD 720x1280")}]
     property var horizontalFpsModel: [{value: "24000/1001", text: i18n("23.98 fps")},
@@ -27,6 +25,7 @@ Window {
     property var verticalFpsModel: [{value: "25", text: i18n("25 fps")}, {value: "30", text: i18n("30 fps")}, {value: "60", text: i18n("60 fps")}]
     property bool firstRun: true
     property bool crashRecovery: false
+    property bool actionsEnabled: false
     property bool wasUpgraded: false
     property bool palFps: true
     property int border: 10
@@ -53,12 +52,27 @@ Window {
     flags: Qt.FramelessWindowHint
     x: (Screen.width - width) / 2
     y: (Screen.height - height) / 2
-    width: splashContent.width
-    height: splashContent.height
+    minimumWidth: splashContent.implicitWidth
+    minimumHeight: splashContent.implicitHeight
+    width: splashContent.implicitWidth
+    height: splashContent.implicitHeight
 
     function fade()
     {
         fadeAnimation.start()
+    }
+
+    function enableActions()
+    {
+        actionsEnabled = true
+    }
+
+    function displayProgress(message)
+    {
+        loadingLabel.text = message
+        loadingBox.visible = message.length > 0
+        recentProjects.enabled = false
+        donateBar.visible = false
     }
 
     Component.onCompleted: {
@@ -78,8 +92,9 @@ Window {
 
     Rectangle {
         id: splashContent
-        height: splash.crashRecovery || splash.wasUpgraded  ? newProjectButton.height * 18 : newProjectButton.height * 16
-        width: newProjectButton.height * 17
+        anchors.fill: parent
+        implicitHeight: splash.crashRecovery || splash.wasUpgraded  ? newProjectButton.height * 20 : newProjectButton.height * 18
+        implicitWidth: newProjectButton.height * 17
         radius: 5
         border.width: 2
         border.color: "#d7566e"
@@ -94,6 +109,7 @@ Window {
             from: 1
             to: 0
         }
+        Keys.enabled: splash.actionsEnabled
         Keys.onDownPressed: {
             if (listView.activeFocus) {
                 if (listView.currentIndex < splash.urls.length)
@@ -125,8 +141,8 @@ Window {
                 }
 
             } else if (tlistView.activeFocus) {
-                if (tlistView.currentIndex >= 0 && tlistView.currentIndex < splash.templates.length)
-                    openTemplate(splash.templates[tlistView.currentIndex]);
+                if (tlistView.currentIndex >= 0 && tlistView.currentIndex < splash.profileIds.length)
+                    openTemplate(splash.profileIds[tlistView.currentIndex]);
             }
         }
         Keys.onEnterPressed: {
@@ -138,8 +154,8 @@ Window {
                 }
 
             } else if (tlistView.activeFocus) {
-                if (tlistView.currentIndex >= 0 && tlistView.currentIndex < splash.templates.length)
-                    openTemplate(splash.templates[tlistView.currentIndex]);
+                if (tlistView.currentIndex >= 0 && tlistView.currentIndex < splash.profileIds.length)
+                    openTemplate(splash.profileIds[tlistView.currentIndex]);
 
             }
         }
@@ -150,6 +166,19 @@ Window {
             } else {
                 openBlank()
             }
+        }
+
+        Shortcut {
+            sequences: [StandardKey.Quit]
+            context: Qt.ApplicationShortcut
+            onActivated: splash.closeApp()
+        }
+
+        Shortcut {
+            sequences: [StandardKey.Open]
+            context: Qt.ApplicationShortcut
+            enabled: !splash.firstRun
+            onActivated: splash.openOtherFile()
         }
 
         Item {
@@ -163,7 +192,7 @@ Window {
                 anchors.fill: parent
                 anchors.margins: 5
                 anchors.bottomMargin: 10
-                source: "qrc:/pics/splash-background.png"
+                source: "qrc:/pics/splash-background.webp"
                 verticalAlignment: Image.AlignTop
                 fillMode: Image.PreserveAspectCrop
 
@@ -334,6 +363,7 @@ Window {
                                         text: splash.fileNames[model.index]
                                         elide: Text.ElideRight
                                         color: labelArea.containsMouse || listButton.hovered ? activePalette.highlight : activePalette.text
+                                        opacity: recentProjects.enabled ? 1 : 0.5
                                     }
                                     Label {
                                         id: datesLabel
@@ -342,13 +372,14 @@ Window {
                                         anchors.rightMargin: 4
                                         text: splash.fileDates[model.index]
                                         color: activePalette.text
-                                        opacity: 0.7
+                                        opacity: recentProjects.enabled ? 0.7 : 0.4
                                     }
 
                                     MouseArea {
                                         id: labelArea
                                         anchors.fill: parent
                                         hoverEnabled: true
+                                        enabled: splash.actionsEnabled
                                         cursorShape: Qt.PointingHandCursor
                                         onPositionChanged: {
                                             if (index != listView.hoveredIndex)
@@ -377,6 +408,7 @@ Window {
                                         height: listLabel.height
                                         width: height
                                         icon.name: "list-remove"
+                                        enabled: splash.actionsEnabled
                                         hoverEnabled: true
                                         ToolTip.text: i18n("Remove file from list")
                                         ToolTip.delay: 1000
@@ -406,8 +438,8 @@ Window {
 
                     Button {
                         id: newProjectButton
-
                         text: i18n("New Project…")
+                        enabled: splash.actionsEnabled
                         icon.name: "document-new"
                         onClicked: splash.openTemplate("")
                         anchors.top: parent.top
@@ -441,6 +473,7 @@ Window {
                                 anchors.right: parent.right
                                 anchors.verticalCenter: parent.verticalCenter
                                 icon.name: "edit-clear-history"
+                                enabled: splash.actionsEnabled
                                 hoverEnabled: true
                                 ToolTip.text: i18n("Clear History of Recent Profiles")
                                 ToolTip.delay: 1000
@@ -498,6 +531,7 @@ Window {
                                         text: splash.profileNames[model.index]
                                         color: templatesArea.containsMouse || tlistButton.hovered ? activePalette.highlight : activePalette.text
                                         elide: Text.ElideMiddle
+                                        opacity: recentProjects.enabled ? 1 : 0.5
                                     }
 
                                     MouseArea {
@@ -505,6 +539,7 @@ Window {
 
                                         anchors.fill: parent
                                         hoverEnabled: true
+                                        enabled: splash.actionsEnabled
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: {
                                             tlistView.currentIndex = index;
@@ -527,6 +562,7 @@ Window {
                                         anchors.verticalCenter: parent.verticalCenter
                                         height: tlistLabel.height
                                         width: height
+                                        enabled: splash.actionsEnabled
                                         icon.name: "list-remove"
                                         ToolTip.text: i18n("Remove profile from list")
                                         ToolTip.delay: 1000
@@ -611,6 +647,7 @@ Window {
                     anchors.rightMargin: 10
                     text: i18n("Reset")
                     icon.name: "view-refresh"
+                    enabled: splash.actionsEnabled
                     onClicked: resetConfig()
                     KeyNavigation.tab: listView
                 }
@@ -651,6 +688,7 @@ Window {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.right: parent.right
                     anchors.rightMargin: 10
+                    enabled: splash.actionsEnabled
                     text: i18n("What's New")
                     icon.name: "help-contents"
                     onClicked: openLink("https://kdenlive.org/news/releases/" + splash.version + "?mtm_campaign=kdenlive_inapp&mtm_kwd=splash_upgraded_notes&mtm_content=" + splash.version)
@@ -660,7 +698,6 @@ Window {
 
             Rectangle {
                 id: donateBar
-
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: buttonBar.top
@@ -686,18 +723,40 @@ Window {
                     ToolButton {
                         icon.name: "user-group-new"
                         text: i18n("Contribute…")
+                        enabled: splash.actionsEnabled
                         onClicked: splash.openLink("https://kdenlive.org/get-involved?mtm_campaign=kdenlive_inapp&mtm_kwd=splash_donatebar_contribute&mtm_content=" + splash.version)
                     }
 
                     ToolButton {
                         text: i18n("Donate…")
                         icon.name: "donate"
+                        enabled: splash.actionsEnabled
                         onClicked: splash.openLink("https://kdenlive.org/fund?mtm_campaign=kdenlive_inapp&mtm_kwd=splash_donatebar_donate&mtm_content=" + splash.version)
                         KeyNavigation.tab: listView
                     }
 
                 }
 
+            }
+            // Loading progress info
+            Rectangle {
+                id: loadingBox
+                visible: false
+                color: activePalette.highlight
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: buttonBar.top
+                radius: 5
+                height: Math.max(loadingLabel.height, notesButton.height) + 10
+                opacity: 0.5
+            }
+            Label {
+                id: loadingLabel
+                anchors.verticalCenter: loadingBox.verticalCenter
+                anchors.left: loadingBox.left
+                anchors.margins: 5
+                wrapMode: Text.Wrap
+                color: activePalette.highlightedText
             }
 
         }
@@ -710,306 +769,306 @@ Window {
             visible: splash.firstRun
 
             ColumnLayout {
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
+                anchors.fill: parent
                 anchors.margins: 10
                 spacing: 10
 
-                Label {
+                ColumnLayout {
                     Layout.fillWidth: true
-                    textFormat: Text.StyledText
-                    horizontalAlignment: Text.AlignJustify
-                    text: i18n("<b>Welcome to Kdenlive Quick Setup</b>")
-                }
-
-                Switch {
-                    id: themeSwitch
-                    enabled: !splash.crashRecovery
-                    text: i18n("Always Use Dark Color Theme")
-                    checked: true
-                    onCheckedChanged: {
-                        switchPalette(checked);
-                    }
-                }
-
-                Label {
-                    Layout.fillWidth: true
-                    textFormat: Text.StyledText
-                    horizontalAlignment: Text.AlignJustify
-                    wrapMode: Text.WordWrap
-                    text: i18n("<b>Default Project Profile</b>")
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    height: childrenRect.height + 2 * 14
-                    radius: 5
-                    color: Qt.darker(splashContent.color, 1.4)
-
-                    RowLayout {
-                        id: profileRow
-                        anchors.top: parent.top
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.margins: 14
-                        spacing: 20
-
-                        ColumnLayout {
-                            Layout.fillWidth: false
-
-                            Rectangle {
-                                id: horizontalFrame
-                                height: buttonNext.height * 1.4
-                                width: height * 16 / 9
-                                Layout.alignment: Qt.AlignHCenter
-                                radius: 5
-                                property bool checked: true
-                                property int lastIndex: -1
-                                property int lastFpsIndex: -1
-                                border.color: checked ? activePalette.highlight : horizontalArea.containsMouse ? activePalette.highlight : activePalette.text
-                                border.width: checked ? 3 : horizontalArea.containsMouse ? 2 : 1
-                                color: checked ? splashContent.color : Qt.darker(splashContent.color, 1.2)
-                                opacity: checked ? 1 : 0.5
-
-                                MouseArea {
-                                    id: horizontalArea
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        verticalFrame.lastIndex = profileCombo.currentIndex
-                                        verticalFrame.lastFpsIndex = fpsCombo.currentIndex
-                                        horizontalFrame.checked = true
-                                        verticalFrame.checked = false
-                                        if (horizontalFrame.lastIndex > -1) {
-                                            profileCombo.currentIndex = horizontalFrame.lastIndex
-                                        }
-                                        if (horizontalFrame.lastFpsIndex > -1) {
-                                            fpsCombo.currentIndex = horizontalFrame.lastFpsIndex
-                                        }
-                                    }
-                                }
-
-                            }
-
-                            Label {
-                                id: horizontalLabel
-                                text: i18n("Horizontal")
-                                Layout.alignment: Qt.AlignHCenter
-                                font.bold: horizontalFrame.checked
-                            }
-
-                        }
-
-                        ColumnLayout {
-                            Layout.fillWidth: false
-
-                            Rectangle {
-                                id: verticalFrame
-                                height: horizontalFrame.height
-                                width: height * 9 / 16
-                                Layout.alignment: Qt.AlignHCenter
-                                radius: 5
-                                property bool checked: false
-                                property int lastIndex: -1
-                                property int lastFpsIndex: -1
-                                border.color: checked ? activePalette.highlight : verticalArea.containsMouse ? activePalette.highlight : activePalette.text
-                                border.width: checked ? 3 : verticalArea.containsMouse ? 2 : 1
-                                color: checked ? splashContent.color : Qt.darker(splashContent.color, 1.2)
-                                opacity: checked ? 1 : 0.5
-
-                                MouseArea {
-                                    id: verticalArea
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        horizontalFrame.lastIndex = profileCombo.currentIndex
-                                        horizontalFrame.lastFpsIndex = fpsCombo.currentIndex
-                                        horizontalFrame.checked = false
-                                        verticalFrame.checked = true
-                                        if (verticalFrame.lastIndex > -1) {
-                                            profileCombo.currentIndex = verticalFrame.lastIndex
-                                        }
-                                        if (verticalFrame.lastFpsIndex > -1) {
-                                            fpsCombo.currentIndex = verticalFrame.lastFpsIndex
-                                        }
-                                    }
-                                }
-
-                            }
-
-                            Label {
-                                id: vLabel
-                                text: i18n("Vertical")
-                                Layout.alignment: Qt.AlignHCenter
-                                font.bold: verticalFrame.checked
-                            }
-
-                        }
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            Row {
-                                spacing: 10
-
-                                Label {
-                                    text: i18n("Resolution")
-                                    verticalAlignment: Qt.AlignVCenter
-                                    Layout.alignment: Qt.AlignVCenter
-                                    height: profileCombo.height
-                                }
-
-                                ComboBox {
-                                    id: profileCombo
-                                    // profile value is: width x height x colorspace x sarNum x sarDen x darNum x darDen
-                                    model: horizontalFrame.checked ? horizontalModel : verticalModel
-                                    textRole: "text"
-                                    valueRole: "value"
-                                    property bool sdProfile: horizontalFrame.checked && (currentValue.startsWith("720x480x") || currentValue.startsWith("720x576x"))
-                                    Component.onCompleted: {
-                                         let index = indexOfValue("1920x1080x709x1x1x16x9");
-                                         if (index >= 0) {
-                                            currentIndex = index
-                                         }
-                                    }
-                                }
-
-                            }
-
-                            Row {
-                                spacing: 10
-
-                                Label {
-                                    text: i18n("Frame Rate")
-                                    verticalAlignment: Qt.AlignVCenter
-                                    Layout.alignment: Qt.AlignVCenter
-                                    height: profileCombo.height
-                                    enabled: fpsCombo.enabled
-                                }
-
-                                ComboBox {
-                                    id: fpsCombo
-                                    model: horizontalFrame.checked ? horizontalFpsModel : verticalFpsModel
-                                    textRole: "text"
-                                    valueRole: "value"
-                                    Component.onCompleted: {
-                                         let index = indexOfValue(palFps ? "25" : horizontalFrame.checked ? "24000/1001" : "30");
-                                         if (index >= 0) {
-                                            currentIndex = index
-                                         }
-                                    }
-                                }
-
-                            }
-
-                            Row {
-                                spacing: 10
-                                Switch {
-                                    id: interlacedSwitch
-                                    text: i18n("Interlaced")
-                                    enabled: !profileCombo.sdProfile && horizontalFrame.checked
-                                }
-
-                            }
-
-                        }
-
-                    }
-
-                }
-                Item {
-                    Layout.fillWidth: true
-                    height: vTracks.height
-                    RowLayout {
-                        anchors.left: parent.left
-                        spacing: 10
-                        height: vTracks.height
-                        Label {
-                            text: i18n("Video Tracks")
-                            Layout.alignment: Qt.AlignVCenter
-                        }
-                        SpinBox {
-                            id: vTracks
-                            value: 2
-
-                        }
-                        Label {
-                            text: i18n("Audio Tracks")
-                            Layout.alignment: Qt.AlignVCenter
-                        }
-                        SpinBox {
-                            id: aTracks
-                            value: 2
-                        }
-                    }
-                }
-
-                Label {
-                    Layout.fillWidth: true
-                    wrapMode: Text.WordWrap
-                    text: i18n("This can always be changed later in the Settings.")
-                    font.italic: true
-                }
-                Item {
-                    // Crash recovery
-                    visible: splash.crashRecovery
-                    Layout.fillWidth: true
-                    height: Math.max(restartWelcomeButton.height, restartWelcomeLabel.height) + 10
-                    Rectangle {
-                        anchors.fill: parent
-                        color: "#22FF0000"
-                        radius: 5
-                    }
+                    Layout.fillHeight: true
+                    Layout.alignment: Qt.AlignTop
                     Label {
-                        id: restartWelcomeLabel
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.left: parent.left
-                        anchors.leftMargin: 10
-                        anchors.right: restartWelcomeButton.left
-                        text: i18n("Kdenlive crashed on last start. Reset config and restart?")
-                        Layout.alignment: Qt.AlignVCenter
-                        wrapMode: Text.Wrap
+                        Layout.fillWidth: true
+                        textFormat: Text.StyledText
+                        horizontalAlignment: Text.AlignJustify
+                        text: i18n("<b>Welcome to Kdenlive Quick Setup</b>")
                     }
+
+                    Switch {
+                        id: themeSwitch
+                        enabled: !splash.crashRecovery
+                        text: i18n("Always Use Dark Color Theme")
+                        checked: true
+                        onCheckedChanged: {
+                            switchPalette(checked);
+                        }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        textFormat: Text.StyledText
+                        horizontalAlignment: Text.AlignJustify
+                        wrapMode: Text.WordWrap
+                        text: i18n("<b>Default Project Profile</b>")
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: childrenRect.height + 2 * 14
+                        radius: 5
+                        color: Qt.darker(splashContent.color, 1.4)
+
+                        RowLayout {
+                            id: profileRow
+                            anchors.top: parent.top
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.margins: 14
+                            spacing: 20
+
+                            ColumnLayout {
+                                Layout.fillWidth: false
+
+                                Rectangle {
+                                    id: horizontalFrame
+                                    height: buttonNext.height * 1.4
+                                    width: height * 16 / 9
+                                    Layout.alignment: Qt.AlignHCenter
+                                    radius: 5
+                                    property bool checked: true
+                                    property int lastIndex: -1
+                                    property int lastFpsIndex: -1
+                                    border.color: checked ? activePalette.highlight : horizontalArea.containsMouse ? activePalette.highlight : activePalette.text
+                                    border.width: checked ? 3 : horizontalArea.containsMouse ? 2 : 1
+                                    color: checked ? splashContent.color : Qt.darker(splashContent.color, 1.2)
+                                    opacity: checked ? 1 : 0.5
+
+                                    MouseArea {
+                                        id: horizontalArea
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            verticalFrame.lastIndex = profileCombo.currentIndex
+                                            verticalFrame.lastFpsIndex = fpsCombo.currentIndex
+                                            horizontalFrame.checked = true
+                                            verticalFrame.checked = false
+                                            if (horizontalFrame.lastIndex > -1) {
+                                                profileCombo.currentIndex = horizontalFrame.lastIndex
+                                            }
+                                            if (horizontalFrame.lastFpsIndex > -1) {
+                                                fpsCombo.currentIndex = horizontalFrame.lastFpsIndex
+                                            }
+                                        }
+                                    }
+
+                                }
+
+                                Label {
+                                    id: horizontalLabel
+                                    text: i18n("Horizontal")
+                                    Layout.alignment: Qt.AlignHCenter
+                                    font.bold: horizontalFrame.checked
+                                }
+
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: false
+
+                                Rectangle {
+                                    id: verticalFrame
+                                    height: horizontalFrame.height
+                                    width: height * 9 / 16
+                                    Layout.alignment: Qt.AlignHCenter
+                                    radius: 5
+                                    property bool checked: false
+                                    property int lastIndex: -1
+                                    property int lastFpsIndex: -1
+                                    border.color: checked ? activePalette.highlight : verticalArea.containsMouse ? activePalette.highlight : activePalette.text
+                                    border.width: checked ? 3 : verticalArea.containsMouse ? 2 : 1
+                                    color: checked ? splashContent.color : Qt.darker(splashContent.color, 1.2)
+                                    opacity: checked ? 1 : 0.5
+
+                                    MouseArea {
+                                        id: verticalArea
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            horizontalFrame.lastIndex = profileCombo.currentIndex
+                                            horizontalFrame.lastFpsIndex = fpsCombo.currentIndex
+                                            horizontalFrame.checked = false
+                                            verticalFrame.checked = true
+                                            if (verticalFrame.lastIndex > -1) {
+                                                profileCombo.currentIndex = verticalFrame.lastIndex
+                                            }
+                                            if (verticalFrame.lastFpsIndex > -1) {
+                                                fpsCombo.currentIndex = verticalFrame.lastFpsIndex
+                                            }
+                                        }
+                                    }
+
+                                }
+
+                                Label {
+                                    id: vLabel
+                                    text: i18n("Vertical")
+                                    Layout.alignment: Qt.AlignHCenter
+                                    font.bold: verticalFrame.checked
+                                }
+
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                Row {
+                                    spacing: 10
+                                    Label {
+                                        text: i18n("Resolution")
+                                        verticalAlignment: Qt.AlignVCenter
+                                        Layout.alignment: Qt.AlignVCenter
+                                        height: profileCombo.height
+                                    }
+
+                                    ComboBox {
+                                        id: profileCombo
+                                        // profile value is: width x height x colorspace x sarNum x sarDen x darNum x darDen
+                                        model: horizontalFrame.checked ? horizontalModel : verticalModel
+                                        textRole: "text"
+                                        valueRole: "value"
+                                        property bool sdProfile: horizontalFrame.checked && (currentValue.startsWith("720x480x") || currentValue.startsWith("720x576x"))
+                                        Component.onCompleted: {
+                                            let index = indexOfValue("1920x1080x709x1x1x16x9");
+                                            if (index >= 0) {
+                                                currentIndex = index
+                                            }
+                                        }
+                                    }
+
+                                }
+
+                                Row {
+                                    spacing: 10
+
+                                    Label {
+                                        text: i18n("Frame Rate")
+                                        verticalAlignment: Qt.AlignVCenter
+                                        Layout.alignment: Qt.AlignVCenter
+                                        height: profileCombo.height
+                                        enabled: fpsCombo.enabled
+                                    }
+
+                                    ComboBox {
+                                        id: fpsCombo
+                                        model: horizontalFrame.checked ? horizontalFpsModel : verticalFpsModel
+                                        textRole: "text"
+                                        valueRole: "value"
+                                        Component.onCompleted: {
+                                            let index = indexOfValue(palFps ? "25" : horizontalFrame.checked ? "24000/1001" : "30");
+                                            if (index >= 0) {
+                                                currentIndex = index
+                                            }
+                                        }
+                                    }
+
+                                }
+
+                                Row {
+                                    spacing: 10
+                                    Switch {
+                                        id: interlacedSwitch
+                                        text: i18n("Interlaced")
+                                        enabled: !profileCombo.sdProfile && horizontalFrame.checked
+                                    }
+
+                                }
+
+                            }
+
+                        }
+
+                    }
+                    Item {
+                        Layout.fillWidth: true
+                        height: vTracks.height
+                        RowLayout {
+                            anchors.left: parent.left
+                            spacing: 10
+                            height: vTracks.height
+                            Label {
+                                text: i18n("Video Tracks")
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+                            SpinBox {
+                                id: vTracks
+                                value: 2
+
+                            }
+                            Label {
+                                text: i18n("Audio Tracks")
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+                            SpinBox {
+                                id: aTracks
+                                value: 2
+                            }
+                        }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        text: i18n("This can always be changed later in the Settings.")
+                        font.italic: true
+                    }
+                    Item {
+                        // Crash recovery
+                        visible: splash.crashRecovery
+                        Layout.fillWidth: true
+                        height: Math.max(restartWelcomeButton.height, restartWelcomeLabel.height) + 10
+                        Rectangle {
+                            anchors.fill: parent
+                            color: "#22FF0000"
+                            radius: 5
+                        }
+                        Label {
+                            id: restartWelcomeLabel
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.leftMargin: 10
+                            anchors.right: restartWelcomeButton.left
+                            text: i18n("Kdenlive crashed on last start. Reset config and restart?")
+                            Layout.alignment: Qt.AlignVCenter
+                            wrapMode: Text.Wrap
+                        }
+                        Button {
+                            id: restartWelcomeButton
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.right: parent.right
+                            anchors.rightMargin: 10
+                            enabled: splash.actionsEnabled
+                            text: i18n("Reset")
+                            icon.name: "view-refresh"
+                            onClicked: resetConfig()
+                        }
+                    }
+
+                }
+
+                RowLayout {
                     Button {
-                        id: restartWelcomeButton
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.right: parent.right
-                        anchors.rightMargin: 10
-                        text: i18n("Reset")
-                        icon.name: "view-refresh"
-                        onClicked: resetConfig()
+                        id: buttonHelp
+                        icon.name: "help-browser"
+                        text: i18n("Check Online Documentation")
+                        enabled: splash.actionsEnabled
+                        Layout.alignment: Qt.AlignLeft
+                        onClicked: openLink("https://docs.kdenlive.org?mtm_campaign=kdenlive_inapp&mtm_kwd=splash_dcumentation")
                     }
-                }
 
-            }
-
-            RowLayout {
-                anchors.right: parent.right
-                anchors.left: parent.left
-                anchors.bottom: parent.bottom
-                anchors.margins: 10
-
-                Button {
-                    id: buttonHelp
-                    icon.name: "help-browser"
-                    text: i18n("Check Online Documentation")
-                    Layout.alignment: Qt.AlignLeft
-                    onClicked: openLink("https://docs.kdenlive.org?mtm_campaign=kdenlive_inapp&mtm_kwd=splash_dcumentation")
-                }
-
-                Button {
-                    id: buttonNext
-                    icon.name: "go-next"
-                    text: i18n("Start Editing")
-                    onClicked: {
-                        firstStart(profileCombo.currentValue, fpsCombo.currentValue, verticalFrame.checked ? false : interlacedSwitch.enabled ? interlacedSwitch.checked : true, vTracks.value, aTracks.value)
-                        splash.hide()
+                    Button {
+                        id: buttonNext
+                        icon.name: "go-next"
+                        text: i18n("Start Editing")
+                        enabled: splash.actionsEnabled
+                        onClicked: {
+                            firstStart(profileCombo.currentValue, fpsCombo.currentValue, verticalFrame.checked ? false : interlacedSwitch.enabled ? interlacedSwitch.checked : true, vTracks.value, aTracks.value)
+                            splash.hide()
+                        }
+                        Layout.alignment: Qt.AlignRight
                     }
-                    Layout.alignment: Qt.AlignRight
-                }
 
+                }
             }
 
         }
@@ -1020,6 +1079,7 @@ Window {
             anchors.topMargin: 8
             anchors.rightMargin: 8
             icon.name: "window-close"
+            enabled: splash.actionsEnabled
             onClicked: splash.closeApp()
             opacity: 0.6
         }

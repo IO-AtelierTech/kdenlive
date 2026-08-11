@@ -781,6 +781,7 @@ QWidget *ClipPropertiesController::constructPropertiesPage()
             QObject::connect(videoStream, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged), this, [this, videoStream]() {
                 QMap<QString, QString> properties;
                 properties.insert(QStringLiteral("video_index"), QString::number(videoStream->currentData().toInt()));
+                properties.insert(QStringLiteral("vstream"), QString::number(videoStream->currentIndex()));
                 Q_EMIT updateClipProperties(m_id, m_originalProperties, properties);
                 m_originalProperties = properties;
             });
@@ -812,9 +813,10 @@ QWidget *ClipPropertiesController::constructPropertiesPage()
         if (m_properties->get_int("meta.media.variable_frame_rate")) {
             m_warningMessage->setText(i18n("File uses a variable frame rate, not recommended"));
             QAction *ac = new QAction(i18n("Transcode"));
-            QObject::connect(ac, &QAction::triggered, [id = m_id, resource = m_controller->clipUrl()]() {
-                QMetaObject::invokeMethod(pCore->bin(), "requestTranscoding", Qt::QueuedConnection, Q_ARG(QString, resource), Q_ARG(QString, id), Q_ARG(int, 0),
-                                          Q_ARG(bool, false));
+            QObject::connect(ac, &QAction::triggered, [id = m_id]() {
+                QMetaObject::invokeMethod(pCore->bin(), "requestTranscoding", Qt::QueuedConnection, Q_ARG(QString, id),
+                                          Q_ARG(TranscodeSeek::TranscodeInfo, TranscodeSeek::TranscodeInfo()), Q_ARG(bool, false), Q_ARG(QString, QString()),
+                                          Q_ARG(QString, QString()));
             });
             m_warningMessage->setMessageType(KMessageWidget::Warning);
             m_warningMessage->addAction(ac);
@@ -1668,7 +1670,7 @@ QMap<QString, QString> ClipPropertiesController::getMetadataExif()
                 metadata.insert(key, value);
             }
         }
-        return metadata; //TODO: this copies the current behaviour but maybe we should continue below eg. if metadate is empty yet?
+        return metadata; // TODO: this copies the current behaviour but maybe we should continue below eg. if metadate is empty yet?
     }
 
     if (!(m_type == ClipType::Image || m_controller->codec(false) == QLatin1String("h264"))) {
@@ -1738,7 +1740,7 @@ void ClipPropertiesController::slotFillMeta(QTreeWidget *tree)
         QMapIterator<QString, QString> i(exifMetadata);
         while (i.hasNext()) {
             i.next();
-            new QTreeWidgetItem(exif, { i.key(), i.value() });
+            new QTreeWidgetItem(exif, {i.key(), i.value()});
         }
     }
 
@@ -1758,7 +1760,7 @@ void ClipPropertiesController::slotFillMeta(QTreeWidget *tree)
 
     if (!magicLanternMetadata.isEmpty()) {
         // Parent tree item
-        QTreeWidgetItem *magicL = new QTreeWidgetItem(tree, { i18n("Magic Lantern"), QString() });
+        QTreeWidgetItem *magicL = new QTreeWidgetItem(tree, {i18n("Magic Lantern"), QString()});
         QIcon icon(QStandardPaths::locate(QStandardPaths::AppDataLocation, QStringLiteral("meta_magiclantern.png")));
         magicL->setIcon(0, icon);
         magicL->setExpanded(true);
@@ -1767,7 +1769,7 @@ void ClipPropertiesController::slotFillMeta(QTreeWidget *tree)
         QMapIterator<QString, QString> i(magicLanternMetadata);
         while (i.hasNext()) {
             i.next();
-            new QTreeWidgetItem(magicL, { i.key(), i.value() });
+            new QTreeWidgetItem(magicL, {i.key(), i.value()});
         }
     }
 
@@ -1799,8 +1801,8 @@ void ClipPropertiesController::slotDeleteAnalysis()
 
 void ClipPropertiesController::slotSaveAnalysis()
 {
-    const QString url = QFileDialog::getSaveFileName(this, i18nc("@title:window", "Save Analysis Data"), QFileInfo(m_controller->clipUrl()).absolutePath(),
-                                                     i18n("Text File (*.txt)"));
+    const QString url = UiUtils::getSaveFileName(this, i18nc("@title:window", "Save Analysis Data"), QFileInfo(m_controller->clipUrl()).absolutePath(),
+                                                 i18n("Text File (*.txt)"), QStringLiteral(".txt"));
     if (url.isEmpty()) {
         return;
     }

@@ -176,7 +176,7 @@ TEST_CASE("makeNotification creates valid JSON-RPC notification", "[rpc][types]"
 
 TEST_CASE("RPC constants are correct", "[rpc][types]")
 {
-    REQUIRE(QString::fromLatin1(RPC_VERSION) == QStringLiteral("1.0"));
+    REQUIRE(QString::fromLatin1(RPC_PROTOCOL_VERSION) == QStringLiteral("1.0"));
     REQUIRE(RPC_DEFAULT_PORT == 9876);
 }
 

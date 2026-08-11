@@ -148,7 +148,7 @@ public:
     /** @brief Returns a pointer to the timeline with @uuid */
     TimelineWidget *getTimeline(const QUuid uuid) const;
     void getSequenceProperties(const QUuid &uuid, QMap<QString, QString> &props);
-    void closeTimelineTab(const QUuid uuid, bool onDeletion);
+    void closeTimelineTab(const QUuid uuid, bool onDeletion, bool checkActiveClosed=false);
     /** @brief Returns a list of opened tabs uuids */
     const QStringList openedSequences() const;
 
@@ -159,7 +159,7 @@ public:
     bool timelineVisible() const;
 
     /** @brief Raise (show) the clip or project monitor */
-    void raiseMonitor(bool clipMonitor);
+    void raiseMonitor(bool clipMonitor, bool raise = false);
 
     /** @brief Returns a pointer to the render widget */
     RenderWidget *renderWidget() const { return m_renderWidget; }
@@ -316,6 +316,7 @@ private:
     QAction *m_buttonShowMarkers;
     QAction *m_buttonFitZoom;
     QAction *m_buttonTimelineTags;
+    QAction *m_buttonMouseZoomOnPlayhead;
     QAction *m_normalEditTool;
     QAction *m_overwriteEditTool;
     QAction *m_insertEditTool;
@@ -451,6 +452,7 @@ public Q_SLOTS:
 private Q_SLOTS:
     /** @brief Shows the shortcut dialog. */
     void slotEditKeys();
+    void slotEditToolbars();
     void loadDockActions();
     /** @brief Reflects setting changes to the GUI. */
     void updateConfiguration();
@@ -459,6 +461,7 @@ private Q_SLOTS:
     void slotSwitchSnap();
     void slotSwitchClipOverlays();
     void slotShowTimelineTags();
+    void slotMouseZoomOnPlayhead();
     void slotRenderProject();
     void slotStopRenderProject();
     void slotFullScreen();
@@ -482,6 +485,7 @@ private Q_SLOTS:
     void slotAddClipMarker();
     void slotDeleteClipMarker(bool allowGuideDeletion = false);
     void slotDeleteAllClipMarkers();
+    void slotDeleteAllSequenceMarkers();
     void slotEditClipMarker();
 
     /** @brief Adds marker or guide at the current position without showing the marker dialog.

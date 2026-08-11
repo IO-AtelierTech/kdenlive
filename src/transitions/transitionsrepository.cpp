@@ -20,6 +20,15 @@ TransitionsRepository::TransitionsRepository()
     : AbstractAssetsRepository<AssetListType::AssetType>()
 {
     init();
+}
+
+Mlt::Properties *TransitionsRepository::retrieveListFromMlt() const
+{
+    return pCore->getMltRepository()->transitions();
+}
+
+void TransitionsRepository::checkFavorites()
+{
     QStringList invalidTransition;
     for (const QString &effect : KdenliveSettings::favorite_transitions()) {
         if (!exists(effect)) {
@@ -37,14 +46,20 @@ TransitionsRepository::TransitionsRepository()
     }
 }
 
-Mlt::Properties *TransitionsRepository::retrieveListFromMlt() const
-{
-    return pCore->getMltRepository()->transitions();
-}
-
 Mlt::Properties *TransitionsRepository::getMetadata(const QString &assetId) const
 {
     return pCore->getMltRepository()->metadata(mlt_service_transition_type, assetId.toLatin1().data());
+}
+
+void TransitionsRepository::addLuma(const QString &name, const QString &path)
+{
+    Info info;
+    info.id = path;
+    info.mltId = QStringLiteral("luma");
+    info.description = i18n("Luma file :");
+    info.name = name;
+    info.type = AssetListType::AssetType::LumaTransition;
+    m_assets[path] = info;
 }
 
 void TransitionsRepository::parseCustomAssetFile(const QString &file_name, std::unordered_map<QString, Info> &customAssets) const
@@ -69,6 +84,11 @@ void TransitionsRepository::parseCustomAssetFile(const QString &file_name, std::
             continue;
         }
         Info result;
+        // Remove preview tag
+        QDomElement preview = currentNode.firstChildElement(QStringLiteral("preview"));
+        if (!preview.isNull()) {
+            currentNode.removeChild(preview);
+        }
         bool ok = parseInfoFromXml(currentNode.toElement(), result);
         if (!ok) {
             continue;
@@ -78,9 +98,11 @@ void TransitionsRepository::parseCustomAssetFile(const QString &file_name, std::
             result.type = AssetListType::AssetType::Hidden;
         } else if (type == QLatin1String("short")) {
             result.type = AssetListType::AssetType::VideoShortComposition;
-        }
-
-        if (getSingleTrackTransitions().contains(result.id)) {
+        } else if (type == QLatin1String("videotransition")) {
+            result.type = AssetListType::AssetType::VideoTransition;
+        } else if (type == QLatin1String("audiotransition")) {
+            result.type = AssetListType::AssetType::AudioTransition;
+        } else if (getSingleTrackTransitions().contains(result.id)) {
             if (type == QLatin1String("audio")) {
                 result.type = AssetListType::AssetType::AudioTransition;
             } else {
@@ -89,6 +111,9 @@ void TransitionsRepository::parseCustomAssetFile(const QString &file_name, std::
         }
         if (customAssets.count(result.id) > 0) {
             // qDebug() << "duplicate transition" << result.id;
+        }
+        if (m_hiddenList.contains(result.mltId)) {
+            result.type = AssetListType::AssetType::Hidden;
         }
         customAssets[result.id] = result;
     }
@@ -102,7 +127,11 @@ std::unique_ptr<TransitionsRepository> &TransitionsRepository::get()
 
 QStringList TransitionsRepository::assetDirs() const
 {
-    return QStandardPaths::locateAll(QStandardPaths::AppDataLocation, QStringLiteral("transitions"), QStandardPaths::LocateDirectory);
+    QStringList dirs = QStandardPaths::locateAll(QStandardPaths::AppDataLocation, QStringLiteral("transitions"), QStandardPaths::LocateDirectory);
+
+    dirs << qtDataDir(QStringLiteral("transitions"));
+
+    return dirs;
 }
 
 void TransitionsRepository::parseType(Mlt::Properties *metadata, Info &res)
@@ -146,6 +175,11 @@ QStringList TransitionsRepository::assetExcludedPath() const
     return {QStringLiteral(":data/excluded_transitions.txt")};
 }
 
+QStringList TransitionsRepository::assetHiddenPath() const
+{
+    return {QStringLiteral(":data/hidden_transitions.txt")};
+}
+
 QString TransitionsRepository::assetPreferredListPath() const
 {
     // Transitions do not have "Main" filter implemented, so we return an empty
@@ -175,6 +209,12 @@ bool TransitionsRepository::isComposition(const QString &transitionId) const
     auto type = getType(transitionId);
     return type == AssetListType::AssetType::AudioComposition || type == AssetListType::AssetType::VideoComposition ||
            type == AssetListType::AssetType::VideoShortComposition;
+}
+
+bool TransitionsRepository::isLuma(const QString &transitionId) const
+{
+    auto type = getType(transitionId);
+    return type == AssetListType::AssetType::LumaTransition;
 }
 
 const QString TransitionsRepository::getCompositingTransition()

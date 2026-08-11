@@ -92,8 +92,8 @@ Item {
             x: startFrame * root.timeScale
             height: parent.height
             width: subtitleBase.width
-            hoverEnabled: true
-            enabled: true
+            hoverEnabled: !root.isPanning
+            enabled: !root.isPanning
             property int newStart: -1
             property int diff: -1
             property int oldLayer
@@ -112,15 +112,21 @@ Item {
             drag.smoothed: false
             drag.minimumX: 0
             onEntered: {
+                if (root.isPanning) return
                 console.log('ENTERED SUBTITLE MOUSE AREA')
                 timeline.showKeyBinding(i18n("<b>Double click</b> to edit text"))
             }
             onExited: {
+                if (root.isPanning) return
                 timeline.showKeyBinding()
             }
             onPressed: mouse => {
-                console.log('ENTERED ITEM CLCKD:', subtitleRoot.subtitle, ' ID: ', subtitleRoot.subId, 'START FRM: ', subtitleRoot.startFrame)
-                root.autoScrolling = false
+                if (mouse.modifiers & Qt.ControlModifier && (root.activeTool === Kdenlive.ToolType.SelectTool || root.activeTool === Kdenlive.ToolType.RippleTool)) {
+                    mouse.accepted = false
+                    return
+                }
+                console.log('ENTERED ITEM CLICKED:', subtitleRoot.subtitle, ' ID: ', subtitleRoot.subId, 'START FRAME: ', subtitleRoot.startFrame)
+                root.blockAutoScroll = true
                 oldStartX = scrollView.contentX + mapToItem(scrollView, mouseX, 0).x
                 oldStartFrame = subtitleRoot.startFrame
                 oldLayer = subtitleRoot.subLayer
@@ -171,7 +177,7 @@ Item {
                 }
             }
             onReleased: mouse => {
-                root.autoScrolling = timeline.autoScroll
+                root.blockAutoScroll = false
                 root.subtitleMoving = false
                 root.subtitleItem = undefined
                 if (subtitleBase.textEditBegin) {
@@ -286,8 +292,8 @@ Item {
             // Left resize handle to change start timing
             id: startMouseArea
             anchors.fill: parent
-            hoverEnabled: true
-            enabled: true
+            hoverEnabled: !root.isPanning
+            enabled: !root.isPanning
             visible: root.activeTool === Kdenlive.ToolType.SelectTool
             property int newStart: subtitleRoot.startFrame
             property int newDuration: subtitleRoot.duration
@@ -301,7 +307,11 @@ Item {
             cursorShape: containsMouse || pressed ? Qt.SizeHorCursor : Qt.ClosedHandCursor;
             drag.target: leftstart
             onPressed: mouse => {
-                root.autoScrolling = false
+                if (mouse.modifiers & Qt.ControlModifier && (root.activeTool === Kdenlive.ToolType.SelectTool || root.activeTool === Kdenlive.ToolType.RippleTool)) {
+                    mouse.accepted = false
+                    return
+                }
+                root.blockAutoScroll = true
                 oldMouseX = mouseX
                 leftstart.anchors.left = undefined
                 oldStartFrame = subtitleRoot.startFrame // the original start frame of subtitle
@@ -326,7 +336,7 @@ Item {
             onReleased: {
                 //console.log('its RELEASED')
                 trimIn.opacity = 0
-                root.autoScrolling = timeline.autoScroll
+                root.blockAutoScroll = false
                 leftstart.anchors.left = subtitleBase.left
                 if (oldStartFrame != newStart) {
                     if (shiftTrim || (root.groupTrimData == undefined || root.activeTool === Kdenlive.ToolType.RippleTool)) {
@@ -383,8 +393,8 @@ Item {
             // Right resize handle to change end timing
             id: endMouseArea
             anchors.fill: parent
-            hoverEnabled: true
-            enabled: true
+            hoverEnabled: !root.isPanning
+            enabled: !root.isPanning
             visible: root.activeTool === Kdenlive.ToolType.SelectTool
             property bool sizeChanged: false
             property int oldMouseX
@@ -398,7 +408,11 @@ Item {
             drag.smoothed: false
 
             onPressed: mouse => {
-                root.autoScrolling = false
+                if (mouse.modifiers & Qt.ControlModifier && (root.activeTool === Kdenlive.ToolType.SelectTool || root.activeTool === Kdenlive.ToolType.RippleTool)) {
+                    mouse.accepted = false
+                    return
+                }
+                root.blockAutoScroll = true
                 newDuration = subtitleRoot.duration
                 originalDuration = subtitleRoot.duration
                 //rightend.anchors.right = undefined
@@ -424,7 +438,7 @@ Item {
             }
             onReleased: {
                 trimOut.opacity = 0
-                root.autoScrolling = timeline.autoScroll
+                root.blockAutoScroll = false
                 rightend.anchors.right = subtitleBase.right
                 console.log(' GOT RESIZE: ', newDuration, ' > ', originalDuration)
                 if (mouseX != oldMouseX || sizeChanged) {

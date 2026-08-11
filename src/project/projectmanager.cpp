@@ -555,6 +555,7 @@ bool ProjectManager::saveFileAs(const QString &outputFileName, bool saveOverExis
         p.second.erase(last, p.second.end());
     }
     ThumbnailCache::get()->saveCachedThumbs(thumbKeys);
+    pCore->bin()->saveSequenceAudioThumb();
     if (!saveACopy) {
         m_project->setUrl(url);
         // setting up autosave file in ~/.kde/data/stalefiles/kdenlive/
@@ -608,6 +609,8 @@ bool ProjectManager::saveFileAs(const QString &outputFileName, bool saveOverExis
                                            i18n("Cannot perform operation, target directory already exists: %1", newDir.absoluteFilePath(documentId)));
                     } else {
                         // Proceed with the move
+                        // KIO::move needs to have dest folder existing to keep source folder name
+                        newDir.mkpath(".");
                         moveProjectData(oldDir.absoluteFilePath(documentId), newDir.absolutePath());
                     }
                 }
@@ -672,12 +675,12 @@ bool ProjectManager::saveFile()
 
 void ProjectManager::slotOpenFile()
 {
-    Q_EMIT pCore->GUISetupDone();
     if (m_startUrl.isValid()) {
         openFile(m_startUrl);
         m_startUrl.clear();
         return;
     }
+    Q_EMIT pCore->GUISetupDone();
     QString projectFolder = KRecentDirs::dir(QStringLiteral(":KdenliveProjectsFolder"));
     if (!QFileInfo::exists(projectFolder)) {
         projectFolder = QStandardPaths::writableLocation(QStandardPaths::MoviesLocation);
@@ -813,7 +816,6 @@ void ProjectManager::openFile(const QUrl &url)
     if ((m_project != nullptr) && m_project->url() == url) {
         return;
     }
-
     if (!closeCurrentDocument()) {
         return;
     }
@@ -883,7 +885,9 @@ void ProjectManager::doOpenFile(const QUrl &url, KAutoSaveFile *stale, bool isBa
                 pCore->window(), i18n("Cannot open the project file. Error:\n%1\nDo you want to open a backup file?", openResult.getError()),
                 i18n("Error opening file"), KGuiItem(i18n("Open Backup")), KGuiItem(i18n("Recover")));
             if (answer == KMessageBox::PrimaryAction) { // Open Backup
-                slotOpenBackup(url);
+                if (!slotOpenBackup(url)) {
+                    newFile(false);
+                }
                 return;
             } else if (answer == KMessageBox::SecondaryAction) { // Recover
                 // if file was broken by Kdenlive 0.9.4, we can try recovering it. If successful, continue through rest of this function.
@@ -1113,6 +1117,9 @@ void ProjectManager::doOpenFile(const QUrl &url, KAutoSaveFile *stale, bool isBa
     m_project->loading = false;
     if (pCore->closing) {
         pCore->closeApp();
+    }
+    if (KdenliveSettings::audiothumbnails()) {
+        pCore->bin()->loadSequenceAudioThumb();
     }
 
     checkProjectWarnings();
@@ -1677,7 +1684,8 @@ bool ProjectManager::updateTimeline(bool createNewTab, const QString &chunks, co
     std::shared_ptr<ProjectClip> mainClip = pCore->projectItemModel()->getClipByBinID(mainId);
     timelineModel->setMarkerModel(mainClip->markerModel());
     if (pCore->window()) {
-        QObject::connect(timelineModel.get(), &TimelineModel::durationUpdated, this, &ProjectManager::updateSequenceDuration, Qt::UniqueConnection);
+        QObject::connect(timelineModel.get(), &TimelineModel::durationUpdated, this, &ProjectManager::updateSequenceDuration,
+                         static_cast<Qt::ConnectionType>(Qt::DirectConnection | Qt::UniqueConnection));
         pCore->guidesList()->setModel(m_project->getGuideModel(m_project->activeUuid), m_project->getFilteredGuideModel(m_project->activeUuid));
     }
     m_project->loadSequenceGroupsAndGuides(uuid);
@@ -1729,6 +1737,7 @@ void ProjectManager::passSequenceProperties(const QUuid &uuid, std::shared_ptr<M
     if (tractor.property_exists("kdenlive:sequenceproperties.timelineHash")) {
         prod->parent().set("kdenlive:sequenceproperties.timelineHash", tractor.get("kdenlive:sequenceproperties.timelineHash"));
     }
+
     prod->parent().set("kdenlive:producer_type", ClipType::Timeline);
 }
 
@@ -2020,7 +2029,7 @@ void ProjectManager::initSequenceProperties(const QUuid &uuid, std::pair<int, in
 }
 
 bool ProjectManager::openTimeline(const QString &id, int ix, const QUuid &uuid, int position, bool duplicate, std::shared_ptr<TimelineItemModel> existingModel,
-                                  bool openInMonitor)
+                                  bool openInMonitor, bool forceCompositingForExistingModel)
 {
     if (position > -1) {
         m_project->setSequenceProperty(uuid, QStringLiteral("position"), position);
@@ -2079,6 +2088,11 @@ bool ProjectManager::openTimeline(const QString &id, int ix, const QUuid &uuid, 
         if (existingModel == nullptr && !constructTimelineFromTractor(timelineModel, nullptr, *tc.get(), m_project->modifiedDecimalPoint(), chunks, dirty)) {
             qDebug() << "===== LOADING PROJECT INTERNAL ERROR";
         }
+        // Construct timeline from the tractor does the compositing, which is not called for existingModels
+        if (forceCompositingForExistingModel && existingModel != nullptr) {
+            timelineModel->setReOpenTimeline();
+            timelineModel->buildTrackCompositing(true);
+        }
         std::shared_ptr<Mlt::Producer> prod = std::make_shared<Mlt::Producer>(timelineModel->tractor());
 
         // Load stored sequence properties
@@ -2107,7 +2121,8 @@ bool ProjectManager::openTimeline(const QString &id, int ix, const QUuid &uuid, 
         prod->parent().set("kdenlive:description", clip->description().toUtf8().constData());
         prod->parent().set("kdenlive:uuid", uuid.toString().toUtf8().constData());
         prod->parent().set("kdenlive:producer_type", ClipType::Timeline);
-        QObject::connect(timelineModel.get(), &TimelineModel::durationUpdated, this, &ProjectManager::updateSequenceDuration, Qt::UniqueConnection);
+        QObject::connect(timelineModel.get(), &TimelineModel::durationUpdated, this, &ProjectManager::updateSequenceDuration,
+                         static_cast<Qt::ConnectionType>(Qt::DirectConnection | Qt::UniqueConnection));
         timelineModel->setMarkerModel(clip->markerModel());
         m_project->loadSequenceGroupsAndGuides(uuid);
         clip->setProducer(prod, false, false);
@@ -2317,7 +2332,7 @@ void ProjectManager::doSyncTimeline(std::shared_ptr<TimelineItemModel> model, bo
     }
 }
 
-bool ProjectManager::closeTimeline(const QUuid &uuid, bool onDeletion, bool clearUndo)
+bool ProjectManager::closeTimeline(const QUuid &uuid, bool onDeletion, bool clearUndo, bool checkActiveClosed)
 {
     std::shared_ptr<TimelineItemModel> model = m_project->getTimeline(uuid);
     if (model == nullptr) {
@@ -2329,7 +2344,7 @@ bool ProjectManager::closeTimeline(const QUuid &uuid, bool onDeletion, bool clea
         // triggered when deleting bin clip, also close timeline tab
         pCore->projectItemModel()->removeReferencedClips(uuid, true);
         if (pCore->window()) {
-            pCore->window()->closeTimelineTab(uuid, false);
+            pCore->window()->closeTimelineTab(uuid, false, checkActiveClosed);
         }
     } else {
         if (!m_project->closing && !onDeletion) {
@@ -2341,7 +2356,7 @@ bool ProjectManager::closeTimeline(const QUuid &uuid, bool onDeletion, bool clea
     m_project->closeTimeline(uuid, onDeletion);
     // The undo stack keeps references to guides model and will crash on undo if not cleared
     if (clearUndo) {
-        qDebug() << ":::::::::::::: WARNING CLEARING NUDO STACK\n\n:::::::::::::::::";
+        qDebug() << ":::::::::::::: WARNING CLEARING UNDO STACK\n\n:::::::::::::::::";
         undoStack()->clear();
     }
     if (!m_project->closing) {
@@ -2417,7 +2432,7 @@ void ProjectManager::slotCreateSequenceFromSelection()
     local_redo();
     PUSH_LAMBDA(local_redo, redo);
     int newId;
-    result = m_activeTimelineModel->requestClipInsertion(newSequenceId, vPosition.second, vPosition.first, newId, false, true, false, undo, redo, {});
+    result = m_activeTimelineModel->requestClipInsertion(newSequenceId, vPosition.second, vPosition.first, newId, false, true, false, undo, redo, {}, 1);
     if (!result) {
         undo();
         pCore->displayMessage(i18n("Cannot insert sequence in current timeline"), ErrorMessage);

@@ -20,6 +20,7 @@ public:
     bool hasCrashRecovery() const;
     bool wasUpgraded() const;
     bool hasEventLoop() const;
+    void setReady();
 
 private:
     QQmlApplicationEngine *m_engine;
@@ -35,6 +36,10 @@ public Q_SLOTS:
 
 private Q_SLOTS:
     void updateWelcomeDisplay(bool show);
+    void clearHistory();
+    void forgetFile(const QString &path);
+    void clearProfiles();
+    void forgetProfile(const QString &path);
 
 Q_SIGNALS:
     void openBlank();
@@ -47,8 +52,4 @@ Q_SIGNALS:
     void firstStart(QString resolution, QString fps, bool interlaced, int vTracks, int aTracks);
     void resetConfig();
     void releaseLock();
-    void clearHistory();
-    void clearProfiles();
-    void forgetFile(QString url);
-    void forgetProfile(QString id);
 };
