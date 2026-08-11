@@ -687,8 +687,13 @@ void PreviewManager::processEnded(int exitCode, QProcess::ExitStatus status)
 {
     const QString sceneList = m_cacheDir.absoluteFilePath(QStringLiteral("preview.mlt"));
     QFile::remove(sceneList);
-    if (pCore->window() && (status == QProcess::QProcess::CrashExit || exitCode != 0)) {
-        Q_EMIT previewRender(0, m_errorLog, -1);
+    if (status == QProcess::QProcess::CrashExit || exitCode != 0) {
+        // Always surface the render error log: the window() guard below hides
+        // it entirely when no UI exists (e.g. tests or headless runners).
+        qWarning() << "Timeline preview render failed, exit code:" << exitCode << "status:" << status << "error log:" << m_errorLog;
+        if (pCore->window()) {
+            Q_EMIT previewRender(0, m_errorLog, -1);
+        }
         if (workingPreview >= 0) {
             const QString fileName = QStringLiteral("%1.%2").arg(workingPreview).arg(m_extension);
             if (m_cacheDir.exists(fileName)) {
