@@ -26,12 +26,16 @@ QString getCIMltRepositoryPath()
             continue;
         }
 
-        qDebug() << varname << "envvar is set, try to use it for MLT repository path";
-        QString repositoryPath = QDir::cleanPath(qgetenv(varname) + QDir::separator() + QStringLiteral("lib/mlt"));
-        if (!QFile::exists(repositoryPath)) {
-            qDebug() << repositoryPath << "does not exist ($" << varname << "/lib/mlt)";
-            QString repositoryPath = QDir::cleanPath(qgetenv(varname) + QDir::separator() + QStringLiteral("lib/mlt-7"));
-        }
+qDebug() << varname << "envvar is set, try to use it for MLT repository path";
+         QString repositoryPath = QDir::cleanPath(qgetenv(varname) + QDir::separator() + QStringLiteral("lib/mlt"));
+         if (!QFile::exists(repositoryPath)) {
+             qDebug() << repositoryPath << "does not exist ($" << varname << "/lib/mlt)";
+             // The inner "QString" declaration used to shadow the outer variable
+             // here, so the check below kept testing lib/mlt and lib/mlt-7 (MLT
+             // 7's actual plugin dir) was never found, leaving the factory
+             // without plugins in packed/CI environments.
+             repositoryPath = QDir::cleanPath(qgetenv(varname) + QDir::separator() + QStringLiteral("lib/mlt-7"));
+         }
         if (!QFile::exists(repositoryPath)) {
             qDebug() << repositoryPath << "does not exist ($" << varname << "/lib/mlt-7)";
             return {};
